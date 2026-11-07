@@ -273,3 +273,15 @@ bool Canvas::importAse(const QString& path){
                        .arg(notes.isEmpty() ? QString() : QStringLiteral(" — ") + notes.join(QStringLiteral(", "))));
     return true;
 }
+
+bool Canvas::importTextArt(const QString& path){
+    QFile f(path); if(!f.open(QIODevice::ReadOnly) || f.size() > (qint64(64) << 20)) return false;
+    TextArt art;
+    if(!decodeTextArt(f.readAll(), QFileInfo(path).suffix(), &art)){ emit statusMessage("No readable text art found in the file."); return false; }
+    Document pd; pd.pageSize = art.image.size();
+    Shape s = psdBitmapShape(art.image, 0, 0, art.title.isEmpty() ? QFileInfo(path).completeBaseName() : art.title);
+    s.fill.pixelated = true;
+    pd.shapes << s;
+    const QString by = art.author.isEmpty() ? QString() : QStringLiteral("by %1%2").arg(art.author, art.group.isEmpty() ? QString() : QStringLiteral(" / ") + art.group);
+    return adoptLayers(pd, path, "Import text art", by);
+}

@@ -109,6 +109,7 @@ add_executable(xarq
     aseimport.cpp
     gputex.cpp
     textures.cpp
+    ansiart.cpp
     xcfimport.cpp
     kraimport.cpp
     oraimport.cpp

@@ -13182,6 +13182,29 @@ if(xara::pdfVectorAvailable()){
       check(importSaiDocument(QByteArray(3*4096,'\x5a')).shapes.isEmpty() && importSaiDocument("SAI").shapes.isEmpty(), "SAI: cut-short and foreign files give nothing, safely");
     }
 
+    // --- Text-mode art ---
+    std::printf("[interop] Text art\n");
+    {
+      TextArt a;
+      // Bold red on blue, a cursor jump, a reset, a CP437 full block, 24-bit PabloDraw colour; 4 columns wide by SAUCE.
+      QByteArray ans="\x1b[1;31;44mA\x1b[2;3H\x1b[0m\xdb\x1b[1;10;20;30tB\r\n";
+      QByteArray sauce="SAUCE00"+QByteArray("Title").leftJustified(35,' ')+QByteArray("Me").leftJustified(20,' ')+QByteArray(20,' ')+QByteArray("20261107")+QByteArray(4,'\0');
+      sauce.append(char(1)); sauce.append(char(1)); sauce.append(char(4)); sauce.append('\0'); sauce.append(char(2)); sauce.append('\0'); sauce+=QByteArray(4,'\0'); sauce.append('\0'); sauce.append(char(1|4)); sauce+=QByteArray(22,'\0');
+      check(decodeTextArt(ans+"\x1a"+sauce,"ans",&a) && a.title=="Title" && a.author=="Me" && a.image.size()==QSize(4*9,2*16), "Text art: SAUCE title, author, width and 9-pixel cells");
+      if(!a.image.isNull()){
+        check(a.image.pixel(0,0)==qRgb(0,0,0xaa) && a.image.pixel(2,7)==qRgb(0xff,0x55,0x55), "Text art: bold bright foreground on a background colour, drawn with the VGA font");
+        check(a.image.pixel(2*9+3,16+5)==qRgb(0xaa,0xaa,0xaa) && a.image.pixel(3*9+1,16+8)==qRgb(10,20,30), "Text art: cursor positioning, reset, a block character and PabloDraw 24-bit colour");
+      }
+      // XBin: 2×1, its own palette, run-length compressed (one "both repeat" run of two cells).
+      QByteArray xb="XBIN\x1a"; xb.append(char(2)); xb.append('\0'); xb.append(char(1)); xb.append('\0'); xb.append(char(16)); xb.append(char(1|4));
+      QByteArray pal(48,'\0'); pal[3]=char(63); xb+=pal; xb.append(char(0xC1)); xb.append(char(0xDB)); xb.append(char(0x01));
+      TextArt x; check(decodeTextArt(xb,"xb",&x) && x.image.size()==QSize(16,16) && x.image.pixel(12,5)==qRgb(255,0,0), "Text art: XBin with its palette, run-length compressed");
+      TextArt pc; check(decodeTextArt("@X1E\xdb","pcb",&pc) && pc.image.pixel(3,3)==qRgb(0xff,0xff,0x55), "Text art: PCBoard colour codes");
+      TextArt bn; QByteArray bin; for(int i=0;i<80*3;++i){ bin.append(char(0xdb)); bin.append(char(0x0c)); }
+      check(decodeTextArt(bin,"bin",&bn) && bn.image.size()==QSize(640,48) && bn.image.pixel(5,5)==qRgb(0xff,0x55,0x55), "Text art: a raw screen of 80-column rows");
+      TextArt none; check(!decodeTextArt(QByteArray(),"ans",&none) && !decodeTextArt("XBIN\x1a\0\0","xb",&none), "Text art: empty and cut-short files give nothing");
+    }
+
     // --- GPU textures ---
     std::printf("[interop] GPU textures\n");
     {

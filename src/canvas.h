@@ -377,6 +377,7 @@ public:
     bool importSai(const QString& path);                             // PaintTool SAI, with its layers
     bool importAni(const QString& path);                             // Windows animated cursor → frames
     bool importAse(const QString& path);                             // Aseprite → frames, with its layers inside each
+    bool importTextArt(const QString& path);                         // ANSI / ASCII art and its relatives, as a picture
     bool importMpo(const QString& path);                             // multi-picture JPEG → a frame per picture (stereo wiggle)
     bool importPxd(const QString& path);                             // Pixelmator Pro → layers
     bool importClip(const QString& path);                            // Clip Studio Paint → layers

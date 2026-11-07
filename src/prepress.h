@@ -109,6 +109,11 @@ QByteArray saiEncryptPages(QVector<QByteArray> pages);   // for the self-test
 struct AseImportStats { int frames = 0, layers = 0, groups = 0, tilemaps = 0, linkedCels = 0, referenceLayers = 0, unknownModes = 0, badCels = 0; QString colorMode; };
 Document importAseDocument(const QByteArray& data, AseImportStats* stats = nullptr);
 
+// Text-mode art (ANSI/ASCII .ans .asc .nfo .diz, .bin, XBin .xb, ArtWorx .adf, iCE Draw .idf, PCBoard .pcb,
+// TundraDraw .tnd) drawn with its font, as one picture; SAUCE metadata when the file has it.
+struct TextArt { QImage image; QString title, author, group; int columns = 0, rows = 0; };
+bool decodeTextArt(const QByteArray& data, const QString& ext, TextArt* out);
+
 // Pictures that become animation frames: an image, a duration (ms) and a name for each, plus file metadata.
 struct FrameSet { QVector<QImage> frames; QVector<int> delays; QStringList names; QString title, author; };
 bool decodeAni(const QByteArray& data, FrameSet* out);   // Windows animated cursor (.ani), its steps in order
