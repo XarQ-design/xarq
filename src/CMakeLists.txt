@@ -107,6 +107,8 @@ add_executable(xarq
     saiimport.cpp
     animformats.cpp
     aseimport.cpp
+    gputex.cpp
+    textures.cpp
     xcfimport.cpp
     kraimport.cpp
     oraimport.cpp
@@ -213,6 +215,7 @@ if(LIBZSTD_FOUND)
         target_include_directories(xarq PRIVATE ${LIBZSTD_INCLUDE_DIRS})
     endif()
     set_source_files_properties(affvector.cpp PROPERTIES COMPILE_DEFINITIONS "HAVE_ZSTD")
+    set_property(SOURCE textures.cpp APPEND PROPERTY COMPILE_DEFINITIONS HAVE_ZSTD)   # KTX2 zstd supercompression
     message(STATUS "Affinity vector import: ENABLED with zstd (container v11 / Affinity 2.x supported)")
 else()
     message(STATUS "Affinity vector import: ENABLED without zstd — v11 files fall back to the preview "

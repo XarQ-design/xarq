@@ -23,6 +23,7 @@
 #include <QAction>
 #include <memory>
 #include <QScreen>
+#include "gputex.h"
 #include "dialogchrome.h"
 #include <QProcessEnvironment>
 #include <QMenu>
@@ -553,6 +554,15 @@ int main(int argc, char** argv) {
             bool ok=img.convertToFormat(QImage::Format_ARGB32).save(out,"PNG");
             fprintf(stdout,"%dx%d via=%s saved=%d %s\n", img.width(), img.height(), qPrintable(via), ok?1:0, qPrintable(out));
             return ok?0:1; }
+        else if(a=="--gputex"&&i+5<argc){ // dev: decode raw GPU blocks: --gputex <format> <w> <h> <in.bin> <out.png> [blockW blockH]
+            static const char* names[]={"bc1","bc1a","bc2","bc3","bc4","bc4s","bc5","bc5s","bc7","etc1","etc2","etc2a1","etc2a8","r11","r11s","rg11","rg11s","astc"};
+            const QString fmt=argv[++i]; const int w=atoi(argv[++i]), h=atoi(argv[++i]); const QString in=argv[++i], out=argv[++i];
+            int bw=4, bh=4; if(i+2<argc && argv[i+1][0]!='-'){ bw=atoi(argv[++i]); bh=atoi(argv[++i]); }
+            int k=0; while(k<18 && fmt!=names[k]) ++k;
+            QFile f(in); if(k==18 || !f.open(QIODevice::ReadOnly)){ fprintf(stderr,"gputex: bad format or input\n"); return 1; }
+            const QByteArray d=f.readAll();
+            const QImage img=xara::gputex::decode(xara::gputex::Format(k), reinterpret_cast<const uchar*>(d.constData()), d.size(), w, h, bw, bh);
+            return (!img.isNull() && img.save(out,"PNG")) ? 0 : 1; }
         else if(a=="--import-frames"&&i+2<argc){ // dev: import an animation, write each frame as <out>_NNN.png (1:1, transparent)
             const QString in=argv[++i], out=argv[++i];
             xara::MainWindow w; w.setShowWelcome(false); w.resize(1200,800); w.show(); QApplication::processEvents();

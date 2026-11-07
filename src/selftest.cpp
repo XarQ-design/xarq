@@ -66,6 +66,8 @@
 #include "icc.h"
 #include "raw.h"
 #include "rasterextra.h"
+#include "gputex.h"
+#include "textures.h"
 #include "extcodecs.h"
 #include "extvector.h"
 #include "jxr.h"
@@ -13178,6 +13180,71 @@ if(xara::pdfVectorAvailable()){
       check(ts.thumbnailOnly && td.shapes.size()==1 && td.shapes[0].fill.image.pixel(1,1)==qRgb(0,255,0), "SAI: with only linework, the thumbnail stands in");
       for(int cut=4096; cut<file.size(); cut+=1531) importSaiDocument(file.left(cut));
       check(importSaiDocument(QByteArray(3*4096,'\x5a')).shapes.isEmpty() && importSaiDocument("SAI").shapes.isEmpty(), "SAI: cut-short and foreign files give nothing, safely");
+    }
+
+    // --- GPU textures ---
+    std::printf("[interop] GPU textures\n");
+    {
+      // One block per format, with four of its pixels (0, 5, 10, 15; ASTC 6×6: 0, 7, 14, 35) as reference decoders give them.
+      struct V { gputex::Format f; const char* hex; QRgb px[4]; };
+      const V vecs[] = {
+        {gputex::Format::BC1, "e7eee7615ef35f30", {0xffc0a839, 0xffefdf39, 0xff633c39, 0xffefdf39}},
+        {gputex::Format::BC4, "e49b482e15cae750", {0xffe40000, 0xffd90000, 0xffa50000, 0xffd90000}},
+        {gputex::Format::BC5, "07201e12617b0feda7e1647796ff022b", {0xff00c900, 0xff0cc900, 0xff1bbe00, 0xffffe100}},
+        {gputex::Format::BC7, "ea8ed02a82a175930f2337cd3794c522", {0xff330c66, 0xff2a7622, 0xff261197, 0xffb76ac3}},
+        {gputex::Format::ETC1, "08006d6b1af0c0cb", {0xff322a95, 0xff00005e, 0xff11095b, 0xff251d6f}},
+        {gputex::Format::ETC2_RGB, "d625658aac2c9faa", {0xffe83375, 0xff9a0027, 0xffa9002d, 0xffa9002d}},
+        {gputex::Format::ETC2_RGBA8, "07d13c447e33051eeef95a60e56143d6", {0x00e1f248, 0x00e1f248, 0x7cec97a8, 0x7cec97a8}},
+        {gputex::Format::EAC_R11, "c43bcad76c008a9b", {0xffd60000, 0xffd00000, 0xffb50000, 0xffa60000}},
+        {gputex::Format::EAC_RG11, "0a6b5fc933154a6de28404a897c52526", {0xff00ca00, 0xff10a200, 0xff00a200, 0xff22ff00}},
+        {gputex::Format::BC3, "fb9659234074f5258f6c68082389d2e4", {0x96293855, 0xfb4a6568, 0xc1080c42, 0x96293855}},
+        {gputex::Format::ASTC, "6f203fae2de55c85abb50b2e8316b32e", {0xff210f0b, 0xff1b0c07, 0xff210f0b, 0xff281410}}
+      };
+      bool exact=true; QStringList wrong;
+      for(const V& v : vecs){
+        const QByteArray blk=QByteArray::fromHex(v.hex); QRgb out[144];
+        const bool astc=v.f==gputex::Format::ASTC; const int bw=astc?6:4, bh=astc?6:4;
+        gputex::decodeBlock(v.f,reinterpret_cast<const uchar*>(blk.constData()),out,bw,bh);
+        const int at[4]={0, astc?7:5, astc?14:10, astc?35:15};
+        for(int k=0;k<4;++k) if(out[at[k]]!=v.px[k]){ exact=false; wrong<<QString(v.hex).left(8); break; }
+      }
+      check(exact, qPrintable("GPU textures: BC1/3/4/5/7, ETC1/2, EAC and ASTC blocks match reference decoders"+(wrong.isEmpty()?QString():" (not: "+wrong.join(",")+")")));
+      const QByteArray etc=QByteArray::fromHex("08006d6b1af0c0cb"), bc7=QByteArray::fromHex("ea8ed02a82a175930f2337cd3794c522");
+      auto be16=[](int v){ QByteArray b(2,'\0'); b[0]=char(v>>8); b[1]=char(v); return b; };
+      auto le32=[](quint32 v){ QByteArray b(4,'\0'); for(int i=0;i<4;++i) b[i]=char(v>>(8*i)); return b; };
+      auto le64=[&](quint64 v){ return le32(quint32(v))+le32(quint32(v>>32)); };
+      const QImage pkm=RasterExtra::decodeData("PKM 10"+be16(0)+be16(4)+be16(4)+be16(3)+be16(3)+etc);
+      check(pkm.size()==QSize(3,3) && pkm.pixel(0,0)==0xff322a95, "GPU textures: a .pkm, cropped to its size");
+      QByteArray astcFile=le32(0x5CA1AB13); astcFile.append(char(6)); astcFile.append(char(6)); astcFile.append(char(1));
+      for(int d : {5,5,1}){ astcFile.append(char(d)); astcFile.append('\0'); astcFile.append('\0'); }
+      astcFile+=QByteArray::fromHex("6f203fae2de55c85abb50b2e8316b32e");
+      const QImage ai=RasterExtra::decodeData(astcFile);
+      check(ai.size()==QSize(5,5) && ai.pixel(0,0)==0xff210f0b, "GPU textures: an .astc file");
+      // KTX 2.0: a 4×4 BC7 image, and a 2×2 RGBA8 image zlib-supercompressed.
+      auto ktx2=[&](quint32 vk,int w,int h,quint32 scheme,const QByteArray& data,quint64 full){
+        QByteArray f=QByteArray::fromHex("AB4B5458203230BB0D0A1A0A")+le32(vk)+le32(1)+le32(w)+le32(h)+le32(0)+le32(0)+le32(1)+le32(1)+le32(scheme);
+        f+=le32(0)+le32(0)+le32(0)+le32(0)+le64(0)+le64(0);
+        f+=le64(f.size()+24)+le64(data.size())+le64(full); return f+data; };
+      const QImage k7=RasterExtra::decodeData(ktx2(145,4,4,0,bc7,16));
+      check(k7.size()==QSize(4,4) && k7.pixel(1,1)==0xff2a7622, "GPU textures: KTX2 holding BC7");
+      const QByteArray rgba=QByteArray::fromHex("ff000080""00ff00ff""0000ffff""ffffff00");
+      const QImage kz=RasterExtra::decodeData(ktx2(37,2,2,3,qCompress(rgba,9).mid(4),16));
+      check(kz.size()==QSize(2,2) && kz.pixel(0,0)==qRgba(255,0,0,128) && kz.pixel(1,1)==qRgba(255,255,255,0), "GPU textures: KTX2 RGBA8, zlib-supercompressed");
+      QString why; check(textures::decodeKtx2(reinterpret_cast<const uchar*>(ktx2(0,4,4,1,QByteArray(16,'\0'),16).constData()),80+24+16,&why).isNull() && why.contains("Basis"),
+                         "GPU textures: Basis-compressed KTX2 is named as such");
+      // DDS with a DX10 header (BC7) and KTX 1 with ETC1.
+      QByteArray dds="DDS "+le32(124)+le32(0)+le32(4)+le32(4); dds.append(QByteArray(76-dds.size()+4,'\0'));
+      dds.resize(76); dds+=le32(32)+le32(4)+QByteArray("DX10")+QByteArray(20,'\0')+QByteArray(20,'\0'); dds.resize(128);
+      dds+=le32(98)+le32(3)+le32(0)+le32(1)+le32(0)+bc7;
+      const QImage di=RasterExtra::decodeData(dds);
+      check(di.size()==QSize(4,4) && di.pixel(1,1)==0xff2a7622, "GPU textures: DDS with a DX10 BC7 header");
+      QByteArray k1=QByteArray::fromHex("AB4B5458203131BB0D0A1A0A")+le32(0x04030201)+le32(0)+le32(1)+le32(0)+le32(0x8D64)+le32(0x1907)+le32(4)+le32(4)+le32(0)+le32(0)+le32(1)+le32(1)+le32(0)+le32(8)+etc;
+      const QImage ki=RasterExtra::decodeData(k1);
+      check(ki.size()==QSize(4,4) && ki.pixel(1,1)==0xff00005e, "GPU textures: KTX 1 holding ETC1");
+      for(int cut=0; cut<k1.size(); cut+=7) RasterExtra::decodeData(k1.left(cut));
+      QRgb junk[144]; QByteArray rnd(16,'\0'); for(int i=0;i<16;++i) rnd[i]=char(i*37+11);
+      for(int bw : {4,5,6,8,10,12}) for(int bh : {4,5,6,8,10,12}) gputex::decodeBlock(gputex::Format::ASTC,reinterpret_cast<const uchar*>(rnd.constData()),junk,bw,bh);
+      check(gputex::decode(gputex::Format::BC7,reinterpret_cast<const uchar*>(bc7.constData()),15,4,4).isNull(), "GPU textures: short data and odd blocks, safely");
     }
 
     // --- Aseprite ---

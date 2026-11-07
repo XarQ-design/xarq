@@ -4,6 +4,8 @@
 // problem so Canvas::importImage cleanly reports failure. No external tools, no extra libraries.
 #include "rasterextra.h"
 #include "affvector.h"
+#include "gputex.h"
+#include "textures.h"
 #include <QFile>
 #include <QFileInfo>
 #include <QPainter>
@@ -290,8 +292,19 @@ QImage decodeDDS(const u8* p, i64 n){
     const u32 rgbBits=rd32le(p+88), rM=rd32le(p+92), gM=rd32le(p+96), bM=rd32le(p+100), aM=rd32le(p+104);
     i64 off=128;
     if(memcmp(fourcc,"DX10",4)==0) off+=20;          // skip the DX10 extension header
-    QImage img(int(w),int(h),QImage::Format_ARGB32); if(img.isNull()) return {};
     const bool compressed=(pfFlags&0x4);             // DDPF_FOURCC
+    { // BC4, BC5, BC7 and every DX10 block format go through the shared block decoder
+      gputex::Format bf; bool block=false;
+      if(memcmp(fourcc,"DX10",4)==0 && n>=148) block=textures::dxgiBlockFormat(rd32le(p+128),&bf);
+      else if(compressed){
+          if(!memcmp(fourcc,"ATI1",4)||!memcmp(fourcc,"BC4U",4)){ bf=gputex::Format::BC4; block=true; }
+          else if(!memcmp(fourcc,"BC4S",4)){ bf=gputex::Format::BC4S; block=true; }
+          else if(!memcmp(fourcc,"ATI2",4)||!memcmp(fourcc,"BC5U",4)){ bf=gputex::Format::BC5; block=true; }
+          else if(!memcmp(fourcc,"BC5S",4)){ bf=gputex::Format::BC5S; block=true; }
+          else if(!memcmp(fourcc,"DXT2",4)){ bf=gputex::Format::BC2; block=true; }
+          else if(!memcmp(fourcc,"DXT4",4)){ bf=gputex::Format::BC3; block=true; } }
+      if(block) return gputex::decode(bf,p+off,n-off,int(w),int(h)); }
+    QImage img(int(w),int(h),QImage::Format_ARGB32); if(img.isNull()) return {};
     if(compressed && (memcmp(fourcc,"DXT1",4)==0||memcmp(fourcc,"DXT3",4)==0||memcmp(fourcc,"DXT5",4)==0)){
         const bool dxt1=memcmp(fourcc,"DXT1",4)==0;
         const int blockBytes=dxt1?8:16;
@@ -330,7 +343,7 @@ QImage decodeDDS(const u8* p, i64 n){
                 int A=aM?int((v&aM)>>as)*255/int(amx):255; o[x]=qRgba(R,G,B,A); } }
         return img;
     }
-    return {};   // unsupported DDS subtype (BC4-7, DX10 typed, etc.) — Batch 2+ territory
+    return {};   // an unsupported DDS subtype (BC6H, typed DX10 formats)
 }
 
 // ---------------------------------------------- Truevision TGA ----------------
@@ -5686,6 +5699,9 @@ QImage decodeKtx(const u8* p, i64 n){
         return img;
     }
 
+    // ---- compressed: ETC, EAC, RGTC, BPTC and ASTC through the shared block decoder ----
+    { gputex::Format bf; int bw=4, bh=4;
+      if(glIntFmt<0x83F0 || glIntFmt>0x83F3) if(textures::glBlockFormat(glIntFmt,&bf,&bw,&bh)) return gputex::decode(bf,d,ds,int(w),int(h),bw,bh); }
     // ---- compressed: S3TC/DXT via glInternalFormat ----
     // 0x83F0 DXT1, 0x83F1 DXT1A, 0x83F2 DXT3, 0x83F3 DXT5
     int mode;   // 1 = DXT1(A), 2 = DXT3, 3 = DXT5
@@ -7873,6 +7889,9 @@ QImage decodeData(const QByteArray& data, const QString& extHint){
     if(n>=4 && p[0]=='B'&&p[1]=='L'&&p[2]=='P' && (p[3]=='0'||p[3]=='1'||p[3]=='2')) return decodeBlp(p,n);                              // Blizzard BLP
     if(n>=4 && p[0]=='V'&&p[1]=='T'&&p[2]=='F'&&p[3]==0) return decodeVtf(p,n);                                                              // Valve VTF
     if(n>=12 && p[0]==0xAB && p[1]=='K'&&p[2]=='T'&&p[3]=='X'&&p[4]==' '&&p[5]=='1'&&p[6]=='1'&&p[7]==0xBB) return decodeKtx(p,n);          // Khronos KTX1
+    if(n>=12 && p[0]==0xAB && p[1]=='K'&&p[2]=='T'&&p[3]=='X'&&p[4]==' '&&p[5]=='2'&&p[6]=='0'&&p[7]==0xBB) return textures::decodeKtx2(p,n); // Khronos KTX 2.0
+    if(n>=16 && !memcmp(p,"PKM ",4)) return textures::decodePkm(p,n);                                                                      // ETC .pkm
+    if(n>=16 && rd32le(p)==0x5CA1AB13u) return textures::decodeAstcFile(p,n);                                                               // ARM .astc
     if(rd32le(p)==0x03525650u || rd32le(p)==0x50565203u){ QImage r=decodePvr(p,n); if(!r.isNull()) return r; }                             // PowerVR v3
     if(n>=352 && (rd32le(p)==348||rd32be(p)==348) && (!memcmp(p+344,"n+1\0",4)||!memcmp(p+344,"ni1\0",4))) return decodeNifti(p,n); // NIfTI-1
     if(n>=8 && !memcmp(p,"NRRD",4)) return decodeNrrd(p,n);                                                                                // NRRD
@@ -7951,6 +7970,9 @@ QImage decodeData(const QByteArray& data, const QString& extHint){
     if(e=="blp") return decodeBlp(p,n);
     if(e=="vtf") return decodeVtf(p,n);
     if(e=="ktx") return decodeKtx(p,n);
+    if(e=="ktx2") return textures::decodeKtx2(p,n);
+    if(e=="pkm") return textures::decodePkm(p,n);
+    if(e=="astc") return textures::decodeAstcFile(p,n);
     if(e=="pvr") return decodePvr(p,n);
     if(e=="wal") return decodeWal(p,n);
     if(e=="nii") return decodeNifti(p,n);
@@ -7997,7 +8019,7 @@ const QStringList& extensions(){
                                 "tru","sc5","rgb8","rgbn","spu","ic1","ic2","ic3",
                                 "mag","pi","cpc","sham","dmp",
                                 "flc","fli","mki","maki","bbc","map","ql",
-                                "blp","vtf","ktx","pvr","wal",
+                                "blp","vtf","ktx","ktx2","pkm","astc","pvr","wal",
                                 "nii","nrrd","mha","mgh","vtk",
                                 "cal","cals","ct1","mil",
                                 "avs","rgf","art","jng","cip","uil","brf","ubrl","isobrl","bie","jbg","jbig","pcd","pcds","hrz","g3","fax","afdesign","afphoto","afpub","aftemplate",
