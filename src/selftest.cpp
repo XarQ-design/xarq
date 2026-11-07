@@ -13180,6 +13180,66 @@ if(xara::pdfVectorAvailable()){
       check(importSaiDocument(QByteArray(3*4096,'\x5a')).shapes.isEmpty() && importSaiDocument("SAI").shapes.isEmpty(), "SAI: cut-short and foreign files give nothing, safely");
     }
 
+    // --- Aseprite ---
+    std::printf("[interop] Aseprite\n");
+    {
+      auto le16=[](quint32 v){ QByteArray b(2,'\0'); b[0]=char(v); b[1]=char(v>>8); return b; };
+      auto le32=[](quint32 v){ QByteArray b(4,'\0'); for(int i=0;i<4;++i) b[i]=char(v>>(8*i)); return b; };
+      auto str=[&](const QByteArray& s){ return le16(s.size())+s; };
+      auto chunk=[&](int type,const QByteArray& body){ return le32(6+body.size())+le16(type)+body; };
+      auto frame=[&](int dur,const QVector<QByteArray>& cs){ QByteArray b; for(const auto& c:cs) b+=c;
+        return le32(16+b.size())+le16(0xF1FA)+le16(cs.size())+le16(dur)+QByteArray(2,'\0')+le32(cs.size())+b; };
+      auto file=[&](int frames,int w,int h,int depth,quint32 flags,int speed,int clear,int pw,int ph,const QVector<QByteArray>& fr){
+        QByteArray body; for(const auto& f:fr) body+=f;
+        QByteArray hd=le32(128+body.size())+le16(0xA5E0)+le16(frames)+le16(w)+le16(h)+le16(depth)+le32(flags)+le16(speed)+QByteArray(8,'\0');
+        hd.append(char(clear)); hd+=QByteArray(3,'\0'); hd+=le16(256); hd.append(char(pw)); hd.append(char(ph)); hd+=QByteArray(128-hd.size(),'\0');
+        return hd+body; };
+      auto layer=[&](int flags,int type,int level,int blend,int opacity,const QByteArray& name,int tileset=-1){
+        QByteArray b=le16(flags)+le16(type)+le16(level)+le16(0)+le16(0)+le16(blend); b.append(char(opacity)); b+=QByteArray(3,'\0'); b+=str(name);
+        if(type==2) b+=le32(tileset); return chunk(0x2004,b); };
+      auto cel=[&](int layer,int x,int y,int opacity,int z,int w,int h,const QByteArray& px,bool raw=false){
+        QByteArray b=le16(layer)+le16(quint16(x))+le16(quint16(y)); b.append(char(opacity)); b+=le16(raw?0:2)+le16(quint16(z))+QByteArray(5,'\0');
+        b+=le16(w)+le16(h)+(raw?px:qCompress(px,9).mid(4)); return chunk(0x2005,b); };
+      auto link=[&](int layer,int toFrame,int z){ QByteArray b=le16(layer)+le16(0)+le16(0); b.append(char(255)); b+=le16(1)+le16(quint16(z))+QByteArray(5,'\0')+le16(toFrame); return chunk(0x2005,b); };
+      const QByteArray oldPal=chunk(0x0004, le16(1)+QByteArray("\x00\x03",2)+QByteArray::fromHex("000000""FF0000""0000FF"));
+      const QByteArray newPal=chunk(0x2019, le32(3)+le32(0)+le32(2)+QByteArray(8,'\0')+le16(0)+QByteArray::fromHex("000000FF")+le16(0)+QByteArray::fromHex("FF0000FF")+le16(0)+QByteArray::fromHex("00FF00FF"));
+      const QByteArray tileset=chunk(0x2023, le32(0)+le32(2|4)+le32(2)+le16(2)+le16(1)+le16(1)+QByteArray(14,'\0')+str("t")+le32(qCompress(QByteArray::fromHex("00000102"),9).mid(4).size())+qCompress(QByteArray::fromHex("00000102"),9).mid(4));
+      QByteArray tm=le16(5)+le16(0)+le16(1); tm.append(char(255)); tm+=le16(3)+le16(0)+QByteArray(5,'\0');
+      tm+=le16(2)+le16(1)+le16(32)+le32(0x1fffffff)+le32(0x80000000)+le32(0x40000000)+le32(0x20000000)+QByteArray(10,'\0')+qCompress(le32(1|0x80000000)+le32(0),9).mid(4);
+      const QByteArray tags=chunk(0x2018, le16(1)+QByteArray(8,'\0')+le16(0)+le16(1)+QByteArray(1,'\x03')+le16(0)+QByteArray(6,'\0')+QByteArray(4,'\0')+str("Run"));
+      const QByteArray tagColour=chunk(0x2020, le32(2)+QByteArray::fromHex("0AC81EFF"));
+      const QByteArray f0=frame(120,{oldPal,newPal,
+          layer(1|8,0,0,0,255,"Back"), layer(1,1,0,1,128,"Grp"), layer(1,0,1,0,255,"Kid"), layer(0,0,0,0,255,"Hidden"), layer(1|64,0,0,0,255,"Ref"), layer(1,2,0,0,255,"Tiles",0),
+          tileset, cel(0,0,0,255,0,4,2,QByteArray(8,'\0')), cel(2,1,0,255,0,2,1,QByteArray("\x01\x01",2)), cel(3,0,0,255,0,1,1,QByteArray("\x02",1)), cel(4,0,0,255,0,1,1,QByteArray("\x01",1)),
+          chunk(0x2005,tm), tags, tagColour});
+      const QByteArray f1=frame(0,{link(0,0,10)});
+      AseImportStats as;
+      const Document ad=importAseDocument(file(2,4,2,8,3,90,0,1,1,{f0,f1}),&as);
+      check(ad.pageSize==QSizeF(4,2) && ad.layers.size()==2 && ad.layers[0].frameDelayMs==120 && ad.layers[1].frameDelayMs==90 && as.colorMode=="indexed" && as.referenceLayers==1 && as.linkedCels==1,
+            "Aseprite: a frame per Aseprite frame, durations falling back to the header's speed");
+      QVector<const Shape*> f0s, f1s; for(const Shape& s : ad.shapes) (s.layer==0 ? f0s : f1s) << &s;
+      check(f0s.size()==4 && f1s.size()==1, "Aseprite: each frame holds its own layers' cels; a reference layer is left out");
+      if(f0s.size()==4){
+        check(f0s[0]->name=="Back" && f0s[0]->fill.image.pixel(0,0)==qRgb(0,0,0) && f0s[0]->fill.pixelated, "Aseprite: indexed pixels; the clear index stays opaque on the background layer");
+        const Shape& g=*f0s[1];
+        check(g.type==ShapeType::Group && g.isolate && g.blend==QPainter::CompositionMode_Multiply && qAbs(g.opacity-128/255.0)<1e-9 && g.children.size()==1
+              && g.children[0].fill.image.pixel(0,0)==qRgb(255,0,0) && g.children[0].docBounds().topLeft()==QPointF(1,0), "Aseprite: a group with its opacity and blend, holding its child layer");
+        check(!f0s[2]->visible && f0s[2]->fill.image.pixel(0,0)==qRgb(0,255,0), "Aseprite: a hidden layer stays hidden; the newer palette chunk wins");
+        const QImage t=f0s[3]->fill.image;
+        check(t.size()==QSize(4,1) && t.pixel(0,0)==qRgb(0,255,0) && t.pixel(1,0)==qRgb(255,0,0) && qAlpha(t.pixel(3,0))==0 && f0s[3]->docBounds().topLeft()==QPointF(0,1),
+              "Aseprite: a tilemap drawn from its tileset, with a flipped tile and an empty one");
+      }
+      if(f1s.size()==1) check(f1s[0]->name=="Back" && f1s[0]->fill.image.pixel(3,1)==qRgb(0,0,0), "Aseprite: a linked cel reuses another frame's picture");
+      check(ad.frameTags.size()==1 && ad.frameTags[0].name=="Run" && ad.frameTags[0].direction==2 && ad.frameTags[0].color==QColor(10,200,30), "Aseprite: tags with their direction and colour");
+      // Grey + alpha, an uncompressed cel, and pixels twice as wide as tall.
+      const Document gd=importAseDocument(file(1,2,1,16,1,100,0,2,1,{frame(50,{layer(1,0,0,0,255,"G"), cel(0,0,0,255,0,2,1,QByteArray::fromHex("80FFC864"),true)})}));
+      check(gd.pageSize==QSizeF(4,1) && gd.shapes.size()==1 && gd.shapes[0].fill.image.pixel(0,0)==qRgb(128,128,128) && qAlpha(gd.shapes[0].fill.image.pixel(1,0))==100
+            && qAbs(gd.shapes[0].docBounds().width()-4)<1e-6, "Aseprite: greyscale, a raw cel, and a pixel aspect ratio");
+      const QByteArray whole=file(2,4,2,8,3,90,0,1,1,{f0,f1});
+      for(int cut=20; cut<whole.size(); cut+=13) importAseDocument(whole.left(cut));
+      check(importAseDocument("not an aseprite file").shapes.isEmpty(), "Aseprite: cut-short and foreign files, safely");
+    }
+
     // --- Animated cursors and multi-picture JPEG ---
     std::printf("[interop] ANI and MPO\n");
     {

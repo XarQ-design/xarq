@@ -250,3 +250,26 @@ void Canvas::adoptFrames(const QVector<QImage>& frames, const QVector<int>& dela
     m_activeLayer = 0;
     m_sel.clear(); emit documentChanged(); emit selectionChanged(); zoomFit(); update();
 }
+
+void Canvas::adoptAnimation(const Document& anim, const QString& undoLabel){
+    pushUndo(undoLabel);
+    m_doc.layers = anim.layers.isEmpty() ? QVector<Layer>{ Layer{} } : anim.layers;
+    m_doc.shapes = anim.shapes; m_doc.pageSize = anim.pageSize; m_doc.pageCount = 1; m_doc.frameTags = anim.frameTags;
+    m_activeLayer = 0;
+    m_sel.clear(); emit documentChanged(); emit selectionChanged(); zoomFit(); update();
+}
+
+bool Canvas::importAse(const QString& path){
+    QFile f(path); if(!f.open(QIODevice::ReadOnly)) return false;
+    AseImportStats st;
+    const Document pd = importAseDocument(f.readAll(), &st);
+    if(pd.layers.isEmpty() || pd.shapes.isEmpty()){ emit statusMessage("No readable frames found in the Aseprite file."); return false; }
+    adoptAnimation(pd, "Import Aseprite");
+    QStringList notes;
+    if(st.badCels) notes << QStringLiteral("%1 cel(s) couldn't be read").arg(st.badCels);
+    if(st.unknownModes) notes << QStringLiteral("%1 blend mode(s) drawn as Normal").arg(st.unknownModes);
+    if(st.referenceLayers) notes << QStringLiteral("%1 reference layer(s) left out").arg(st.referenceLayers);
+    emit statusMessage(QStringLiteral("Imported Aseprite (%1): %2 frame(s), %3 layer(s)%4.").arg(st.colorMode).arg(st.frames).arg(st.layers)
+                       .arg(notes.isEmpty() ? QString() : QStringLiteral(" — ") + notes.join(QStringLiteral(", "))));
+    return true;
+}

@@ -106,6 +106,7 @@ add_executable(xarq
     mdpimport.cpp
     saiimport.cpp
     animformats.cpp
+    aseimport.cpp
     xcfimport.cpp
     kraimport.cpp
     oraimport.cpp

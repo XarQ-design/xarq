@@ -553,6 +553,13 @@ int main(int argc, char** argv) {
             bool ok=img.convertToFormat(QImage::Format_ARGB32).save(out,"PNG");
             fprintf(stdout,"%dx%d via=%s saved=%d %s\n", img.width(), img.height(), qPrintable(via), ok?1:0, qPrintable(out));
             return ok?0:1; }
+        else if(a=="--import-frames"&&i+2<argc){ // dev: import an animation, write each frame as <out>_NNN.png (1:1, transparent)
+            const QString in=argv[++i], out=argv[++i];
+            xara::MainWindow w; w.setShowWelcome(false); w.resize(1200,800); w.show(); QApplication::processEvents();
+            xara::Canvas* c=w.canvas(); c->newDocument();
+            const bool ok=c->dropImportByExtension(in) && c->exportAnimation(out,2,1.0);
+            fprintf(stdout,"import-frames %s: ok=%d frames=%d page=%.0fx%.0f\n", qPrintable(in), ok?1:0, int(c->doc().frameLayers().size()), c->doc().pageSize.width(), c->doc().pageSize.height());
+            return ok?0:1; }
         else if(a=="--import-vec"&&i+1<argc){ // dev: import a vector/page file via dropImportByExtension, report shape/page counts
             QString in=argv[++i];
             QString outPng; if(i+1<argc && argv[i+1][0]!='-') outPng=argv[++i];   // optional: render the imported page to a PNG

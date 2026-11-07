@@ -376,6 +376,7 @@ public:
     bool importMdp(const QString& path);                             // MediBang Paint / FireAlpaca, with its layers
     bool importSai(const QString& path);                             // PaintTool SAI, with its layers
     bool importAni(const QString& path);                             // Windows animated cursor → frames
+    bool importAse(const QString& path);                             // Aseprite → frames, with its layers inside each
     bool importMpo(const QString& path);                             // multi-picture JPEG → a frame per picture (stereo wiggle)
     bool importPxd(const QString& path);                             // Pixelmator Pro → layers
     bool importClip(const QString& path);                            // Clip Studio Paint → layers
@@ -508,6 +509,7 @@ public:
     bool   exportAnimation(const QString& path, int format, double scale=1.0, int from=0, int to=-1, bool transparent=true);
     // Replace the document with an imported animation: a frame per image on a page their size (names/delays per frame).
     void   adoptFrames(const QVector<QImage>& frames, const QVector<int>& delays, const QStringList& names, bool pixelated, const QString& undoLabel);
+    void   adoptAnimation(const Document& anim, const QString& undoLabel);   // its frames, objects, page size and tags replace the document's
     // Per-object edits used by the Page & Layer tree gallery.
     void setShapeVisible(int idx,bool v); void setShapeLocked(int idx,bool l); void renameShape(int idx,const QString& n);
     // Reorder/relayer the whole top-level shape list. `order` lists old shape indices in the NEW

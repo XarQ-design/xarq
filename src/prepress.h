@@ -104,6 +104,11 @@ struct SaiImportStats { int layers = 0, groups = 0, hidden = 0, empty = 0, clipp
 Document importSaiDocument(const QByteArray& data, SaiImportStats* stats = nullptr);
 QByteArray saiEncryptPages(QVector<QByteArray> pages);   // for the self-test
 
+// Aseprite → a Document: a frame (layer) per Aseprite frame with its duration; Aseprite's layers and groups as
+// objects inside each, with opacity, blend mode and visibility; linked cels, tilemaps, tags. Bitmaps are pixelated.
+struct AseImportStats { int frames = 0, layers = 0, groups = 0, tilemaps = 0, linkedCels = 0, referenceLayers = 0, unknownModes = 0, badCels = 0; QString colorMode; };
+Document importAseDocument(const QByteArray& data, AseImportStats* stats = nullptr);
+
 // Pictures that become animation frames: an image, a duration (ms) and a name for each, plus file metadata.
 struct FrameSet { QVector<QImage> frames; QVector<int> delays; QStringList names; QString title, author; };
 bool decodeAni(const QByteArray& data, FrameSet* out);   // Windows animated cursor (.ani), its steps in order

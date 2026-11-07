@@ -1679,6 +1679,7 @@ bool Canvas::dropImportByExtension(const QString& p){
     if(ends(".mdp"))  return importMdp(p);
     if(ends(".sai"))  return importSai(p);
     if(ends(".ani"))  return importAni(p);
+    if(ends(".aseprite")||ends(".ase")) return importAse(p);
     if(ends(".mpo"))  return importMpo(p);
     if(ends(".xcf")||ends(".xcf.gz")||ends(".xcfgz")||ends(".xcf.bz2")||ends(".xcfbz2")) return importXcf(p);
     if(ends(".procreate")) return importProcreate(p);
@@ -3624,7 +3625,10 @@ void Canvas::zoomToSelection(){ QRectF b=selBoundsDoc(); if(b.isNull()){ emit st
 void Canvas::zoomToDrawing(){ QRectF b=m_doc.contentBounds(); if(b.isNull()) b=m_doc.pageRect(0); zoomToRect(b.adjusted(-8,-8,8,8)); }
 void Canvas::previousZoom(){ if(!m_hasPrevZoom) return; std::swap(m_zoom,m_prevZoom); std::swap(m_origin,m_prevOrigin); emit zoomChanged(m_zoom); update(); }
 void Canvas::zoomFit(){ QRectF b=m_doc.contentBounds(); if(b.isNull()) b=QRectF(QPointF(0,0),m_doc.pageSize);
-    b.adjust(-40,-40,40,40); double zx=width()/b.width(), zy=height()/b.height(); m_zoom=qBound(0.05,qMin(zx,zy),8.0);
+    // A small page (a sprite, an icon) fits up close, with a margin to its scale; anything else keeps 40 px and at most 8×.
+    const bool small=qMax(m_doc.pageSize.width(),m_doc.pageSize.height())<=256;
+    const double pad=small ? qMin(40.0, qMax(b.width(),b.height())*0.1+1.0) : 40.0;
+    b.adjust(-pad,-pad,pad,pad); double zx=width()/b.width(), zy=height()/b.height(); m_zoom=qBound(0.05,qMin(zx,zy),small?40.0:8.0);
     m_origin=QPointF(width()/2.0,height()/2.0)-QPointF(b.center().x()*m_zoom,b.center().y()*m_zoom); emit zoomChanged(m_zoom); update(); }
 
 // ---- hit testing -----------------------------------------------------------

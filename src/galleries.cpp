@@ -690,7 +690,7 @@ void AnimationPanel::rebuild(){
     for(const FrameTag& t : d.frameTags){
         m_range->addItem(QString("%1 (%2–%3)").arg(t.name).arg(t.from+1).arg(t.to+1));
         auto* it=new QListWidgetItem(QString("%1   %2–%3%4").arg(t.name).arg(t.from+1).arg(t.to+1).arg(dirs[qBound(0,t.direction,2)]));
-        it->setForeground(t.color.darker(110)); m_tags->addItem(it);
+        QPixmap sw(12,12); sw.fill(t.color); it->setIcon(QIcon(sw)); m_tags->addItem(it);
     }
     m_range->setCurrentIndex(qBound(0,rangeWas,m_range->count()-1));
     m_loops->setValue(d.animLoops);
