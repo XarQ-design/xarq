@@ -212,6 +212,24 @@ bool Canvas::exportAnimation(const QString& path, int format, double scale, int 
     return false;
 }
 
+bool Canvas::importAni(const QString& path){
+    QFile f(path); if(!f.open(QIODevice::ReadOnly)) return false;
+    FrameSet fs;
+    if(!decodeAni(f.readAll(), &fs)){ emit statusMessage("No readable frames found in the animated cursor."); return false; }
+    adoptFrames(fs.frames, fs.delays, fs.names, true, "Import animated cursor");
+    emit statusMessage(QStringLiteral("Imported %1: %2 frame(s)%3.").arg(fs.title.isEmpty() ? QFileInfo(path).fileName() : fs.title).arg(fs.frames.size())
+                       .arg(fs.author.isEmpty() ? QString() : QStringLiteral(" by ") + fs.author));
+    return true;
+}
+bool Canvas::importMpo(const QString& path){
+    QFile f(path); if(!f.open(QIODevice::ReadOnly)) return false;
+    FrameSet fs;
+    if(!decodeMpo(f.readAll(), &fs)){ f.close(); return importImage(path); }      // a single picture: an ordinary JPEG
+    adoptFrames(fs.frames, fs.delays, fs.names, false, "Import multi-picture JPEG");
+    emit statusMessage(QStringLiteral("Imported %1 pictures, one per frame; play them for a stereo wiggle.").arg(fs.frames.size()));
+    return true;
+}
+
 // An imported animation replaces the document: one frame (layer) per image, on a page the size of the
 // frames, placed 1:1. Pixel art keeps hard pixels when zoomed.
 void Canvas::adoptFrames(const QVector<QImage>& frames, const QVector<int>& delays, const QStringList& names, bool pixelated, const QString& undoLabel){

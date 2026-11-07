@@ -13180,6 +13180,45 @@ if(xara::pdfVectorAvailable()){
       check(importSaiDocument(QByteArray(3*4096,'\x5a')).shapes.isEmpty() && importSaiDocument("SAI").shapes.isEmpty(), "SAI: cut-short and foreign files give nothing, safely");
     }
 
+    // --- Animated cursors and multi-picture JPEG ---
+    std::printf("[interop] ANI and MPO\n");
+    {
+      auto le=[](quint32 v){ QByteArray b(4,'\0'); for(int i=0;i<4;++i) b[i]=char(v>>(8*i)); return b; };
+      auto ico=[](QRgb c){ QImage i(16,16,QImage::Format_ARGB32); i.fill(c); QByteArray b; QBuffer bf(&b); bf.open(QIODevice::WriteOnly); i.save(&bf,"ICO"); return b; };
+      auto ck=[&](const QByteArray& id,const QByteArray& body){ QByteArray b=id+le(body.size())+body; if(body.size()&1) b.append('\0'); return b; };
+      QByteArray fram="fram"; for(QRgb c : {qRgb(255,0,0),qRgb(0,255,0),qRgb(0,0,255)}) fram+=ck("icon",ico(c));
+      QByteArray info="INFO"+ck("INAM",QByteArray("Test\0",5));
+      QByteArray body="ACON"+ck("LIST",info)+ck("anih",le(36)+le(3)+le(4)+le(0)+le(0)+le(0)+le(1)+le(10)+le(3))
+                      +ck("rate",le(10)+le(20)+le(10)+le(10))+ck("seq ",le(0)+le(1)+le(2)+le(1))+ck("LIST",fram);
+      const QByteArray ani="RIFF"+le(body.size()-30)+body;              // a RIFF size that understates the file, as some writers do
+      FrameSet fs;
+      check(decodeAni(ani,&fs) && fs.frames.size()==4 && fs.title=="Test", "ANI: every step of the sequence, to the end of the file");
+      if(fs.frames.size()==4)
+        check(fs.frames[0].pixel(5,5)==qRgb(255,0,0) && fs.frames[3].pixel(5,5)==qRgb(0,255,0) && fs.delays[0]==166 && fs.delays[1]==333,
+              "ANI: frames follow the sequence, each step at its own rate");
+      FrameSet bad; check(!decodeAni(ani.left(40),&bad) && !decodeAni("RIFF0000WAVE",&bad), "ANI: a cut-short or foreign RIFF gives nothing");
+
+      auto jpg=[](QRgb c){ QImage i(24,16,QImage::Format_RGB32); i.fill(c); QByteArray b; QBuffer bf(&b); bf.open(QIODevice::WriteOnly); i.save(&bf,"JPEG",95); return b; };
+      const QByteArray a=jpg(qRgb(250,20,20)), b=jpg(qRgb(20,20,250));
+      auto u32=[&](quint32 v){ return le(v); };
+      auto u16=[](quint32 v){ QByteArray x(2,'\0'); x[0]=char(v); x[1]=char(v>>8); return x; };
+      // An APP2 "MPF" index: a little-endian TIFF whose MP entries (primary, a thumbnail to skip, the right view) point at the pictures.
+      auto mpf=[&](quint32 sizeA,quint32 offB,quint32 sizeB){
+        QByteArray t="II*\0"; t.resize(4); t[2]='*'; t[3]='\0'; t+=u32(8);
+        t+=u16(3); t+=u16(0xb000)+u16(7)+u32(4)+QByteArray("0100"); t+=u16(0xb001)+u16(4)+u32(1)+u32(3); t+=u16(0xb002)+u16(7)+u32(48)+u32(8+2+36+4);
+        t+=u32(0);
+        t+=u32(0x20030000)+u32(sizeA)+u32(0)+u32(0); t+=u32(0x00010001)+u32(sizeB)+u32(offB)+u32(0); t+=u32(0x00020002)+u32(sizeB)+u32(offB)+u32(0);
+        const QByteArray seg="MPF"+QByteArray(1,'\0')+t;
+        QByteArray app("\xff\xe2",2); app.append(char((seg.size()+2)>>8)); app.append(char(seg.size()+2)); return app+seg; };
+      const int segLen=mpf(0,0,0).size();
+      const quint32 sizeA=quint32(a.size()+segLen), offB=quint32(sizeA-(2+4+4));   // the TIFF header sits after SOI, marker+length and "MPF\0"
+      const QByteArray mpo=a.left(2)+mpf(sizeA,offB,quint32(b.size()))+a.mid(2)+b;
+      FrameSet ms;
+      check(decodeMpo(mpo,&ms) && ms.frames.size()==2 && ms.names==QStringList({"Left","Right"}), "MPO: the pictures its index lists, skipping a thumbnail");
+      if(ms.frames.size()==2) check(qRed(ms.frames[0].pixel(5,5))>200 && qBlue(ms.frames[1].pixel(5,5))>200, "MPO: each picture decoded");
+      FrameSet plain; check(!decodeMpo(a,&plain), "MPO: a single JPEG isn't a picture set");
+    }
+
     // --- Corel PHOTO-PAINT ---
     std::printf("[interop] Corel PHOTO-PAINT\n");
     {

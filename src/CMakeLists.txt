@@ -105,6 +105,7 @@ add_executable(xarq
     pdnimport.cpp
     mdpimport.cpp
     saiimport.cpp
+    animformats.cpp
     xcfimport.cpp
     kraimport.cpp
     oraimport.cpp

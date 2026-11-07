@@ -104,6 +104,11 @@ struct SaiImportStats { int layers = 0, groups = 0, hidden = 0, empty = 0, clipp
 Document importSaiDocument(const QByteArray& data, SaiImportStats* stats = nullptr);
 QByteArray saiEncryptPages(QVector<QByteArray> pages);   // for the self-test
 
+// Pictures that become animation frames: an image, a duration (ms) and a name for each, plus file metadata.
+struct FrameSet { QVector<QImage> frames; QVector<int> delays; QStringList names; QString title, author; };
+bool decodeAni(const QByteArray& data, FrameSet* out);   // Windows animated cursor (.ani), its steps in order
+bool decodeMpo(const QByteArray& data, FrameSet* out);   // multi-picture JPEG (.mpo): stereo pairs, multi-angle sets
+
 // Corel PHOTO-PAINT → a Document: the background, then each object with its mask, opacity and visibility.
 // Tiles that can't be read are counted; with nothing else readable, the file's thumbnail stands in.
 struct CptImportStats { int objects = 0, hidden = 0, savedMasks = 0, unknownTiles = 0, unknownDepth = 0; bool thumbnailOnly = false; };

@@ -375,6 +375,8 @@ public:
     bool importPdn(const QString& path);                             // Paint.NET, with its layers
     bool importMdp(const QString& path);                             // MediBang Paint / FireAlpaca, with its layers
     bool importSai(const QString& path);                             // PaintTool SAI, with its layers
+    bool importAni(const QString& path);                             // Windows animated cursor → frames
+    bool importMpo(const QString& path);                             // multi-picture JPEG → a frame per picture (stereo wiggle)
     bool importPxd(const QString& path);                             // Pixelmator Pro → layers
     bool importClip(const QString& path);                            // Clip Studio Paint → layers
     bool importPsp(const QString& path);                             // PaintShop Pro → layers
