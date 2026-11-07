@@ -99,11 +99,12 @@ PropertiesPanel::PropertiesPanel(Canvas* c, QWidget* parent):QWidget(parent),m_c
       mh->addStretch(); f->addWidget(m_meshRow);
       // bitmap fill: load image, tile, tint(contone)
       m_bmpRow=new QWidget; auto* bh=new QHBoxLayout(m_bmpRow); bh->setContentsMargins(0,0,0,0); bh->setSpacing(6);
-      m_bmpLoad=new QPushButton("Image…"); m_bmpTile=new QCheckBox("Tile"); m_bmpContone=new QCheckBox("Tint");
-      bh->addWidget(m_bmpLoad); bh->addWidget(m_bmpTile); bh->addWidget(m_bmpContone); bh->addStretch(); f->addWidget(m_bmpRow);
+      m_bmpLoad=new QPushButton("Image…"); m_bmpTile=new QCheckBox("Tile"); m_bmpContone=new QCheckBox("Tint"); m_bmpPixel=new QCheckBox("Pixelated"); m_bmpPixel->setToolTip("Scale without smoothing, keeping hard pixels (pixel art, icons)");
+      bh->addWidget(m_bmpLoad); bh->addWidget(m_bmpTile); bh->addWidget(m_bmpContone); bh->addWidget(m_bmpPixel); bh->addStretch(); f->addWidget(m_bmpRow);
       connect(m_bmpLoad,&QPushButton::clicked,this,[this]{ QString p=QFileDialog::getOpenFileName(this,"Bitmap fill","","Images (*.png *.jpg *.jpeg *.bmp *.gif *.tif *.webp)",nullptr,QFileDialog::DontUseNativeDialog); if(p.isEmpty())return; QImage im(p); if(im.isNull())return;
         apply([&](Shape&s){ s.fill.type=FillType::Bitmap; s.fill.image=im; s.fill.origImage=im; s.fill.tiled=false; QRectF lb=s.localBounds(); s.fill.p0=lb.bottomLeft(); s.fill.p1=lb.bottomRight(); s.fill.p2=lb.topLeft(); },"Bitmap fill"); refresh(); });
       connect(m_bmpTile,&QCheckBox::toggled,this,[this](bool b){ if(m_block)return; apply([&](Shape&s){ s.fill.tiled=b; },"Tile"); });
+      connect(m_bmpPixel,&QCheckBox::toggled,this,[this](bool b){ if(m_block)return; apply([&](Shape&s){ if(s.fill.type==FillType::Bitmap) s.fill.pixelated=b; },"Pixelated"); });
       connect(m_bmpContone,&QCheckBox::toggled,this,[this](bool b){ if(m_block)return; apply([&](Shape&s){ s.fill.contone=b; if(b&&s.fill.color2==s.fill.color)s.fill.color2=Qt::white; },"Tint"); });
       V->addWidget(gb); }
 
@@ -210,7 +211,7 @@ void PropertiesPanel::refresh() {
     m_meshRow->setVisible(f.type==FillType::Mesh);
     if(f.type==FillType::Mesh){ int nc=qMax(3,f.meshColors.size()); for(int k=0;k<4;++k){ m_meshCol[k]->setVisible(k<nc); if(k<f.meshColors.size()) m_meshCol[k]->setColor(f.meshColors[k]); } }
     m_bmpRow->setVisible(f.type==FillType::Bitmap);
-    if(f.type==FillType::Bitmap){ m_bmpTile->setChecked(f.tiled); m_bmpContone->setChecked(f.contone); }
+    if(f.type==FillType::Bitmap){ m_bmpTile->setChecked(f.tiled); m_bmpContone->setChecked(f.contone); m_bmpPixel->setChecked(f.pixelated); }
     // transparency section
     { const Transparency& tp = s? s->transp : Transparency();
       int gt = tp.type==0? 0 : (tp.geom==0?1:(tp.geom==1?2:(tp.geom==5?4:3)));

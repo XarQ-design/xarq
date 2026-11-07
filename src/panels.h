@@ -65,7 +65,7 @@ private:
     QComboBox* m_fillType; ColorButton* m_fillColor; GradientBar* m_gradBar; QPushButton* m_addStop;
     QComboBox* m_fillSpread; QCheckBox* m_fillRainbow; QWidget* m_gradOpts;
     QWidget* m_meshRow; ColorButton* m_meshCol[4];
-    QWidget* m_bmpRow; QPushButton* m_bmpLoad; QCheckBox* m_bmpTile; QCheckBox* m_bmpContone;
+    QWidget* m_bmpRow; QPushButton* m_bmpLoad; QCheckBox* m_bmpTile; QCheckBox* m_bmpContone; QCheckBox* m_bmpPixel;
     // stroke
     QCheckBox* m_strokeOn; ColorButton* m_strokeColor; QDoubleSpinBox* m_strokeW; QComboBox* m_cap, *m_join;
     // object

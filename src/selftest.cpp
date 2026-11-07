@@ -13,6 +13,7 @@
 #include <QFontDatabase>
 #include <QBuffer>
 #include <QStringDecoder>
+#include <QMovie>
 #include <QFileInfo>
 #include <QPainter>
 #include <QRadialGradient>
@@ -4104,6 +4105,56 @@ int runSelfTest() {
       if(QImageWriter::supportedImageFormats().contains("webp")){
         QString wp=td.path()+"/o.webp"; check(c->exportRaster(wp,1,1.0,-1,true), "WebP export succeeds");
         check(!QImage(wp).isNull(), "the exported WebP reloads"); } }
+    // Animation panel model: frames, backgrounds, tags, onion skin and the frame exports.
+    std::printf("[anim] frames, backgrounds and exports\n");
+    { c->newDocument(); c->doc().pageSize=QSizeF(40,20); c->addLayer(); c->addLayer();
+      auto rect=[&](int layer,QRectF r,QColor col){ Shape s; s.type=ShapeType::Rect; s.rect=r; s.layer=layer; s.fill.type=FillType::Solid; s.fill.color=col; s.stroke.enabled=false; c->doc().addShape(s); };
+      rect(0,QRectF(0,0,40,20),QColor(250,0,0));          // will be the background
+      rect(1,QRectF(2,2,6,6),QColor(0,0,250));
+      rect(2,QRectF(30,10,6,6),QColor(0,200,0));
+      c->setFrameBackground(0,true);
+      check(c->doc().frameLayers()==QVector<int>({1,2}), "Animation: a background layer isn't a frame");
+      c->showFrame(1);
+      check(c->doc().layers[0].visible && !c->doc().layers[1].visible && c->doc().layers[2].visible && c->currentFrame()==1, "Animation: showing a frame hides the other frames, keeps the background");
+      const QImage f0=c->renderFrame(0,QSize());
+      check(f0.size()==QSize(40,20) && f0.pixel(20,15)==qRgb(250,0,0) && f0.pixel(4,4)==qRgb(0,0,250) && qAlpha(f0.pixel(33,13))==255 && f0.pixel(33,13)==qRgb(250,0,0),
+            "Animation: a frame renders with its background, without the other frames");
+      const int dup=c->insertFrame(0,true);
+      check(dup==1 && c->doc().frameLayers().size()==3 && c->doc().shapes.size()==4 && c->renderFrame(1,QSize()).pixel(4,4)==qRgb(0,0,250), "Animation: duplicating a frame copies its objects after it");
+      c->moveFrame(2,0);
+      check(c->renderFrame(0,QSize()).pixel(33,13)==qRgb(0,200,0) && c->currentFrame()==0, "Animation: moving a frame reorders the frames");
+      c->setFrameDelay({0,1},250);
+      const QVector<int> fl=c->doc().frameLayers();
+      check(c->doc().layers[fl[0]].frameDelayMs==250 && c->doc().layers[fl[1]].frameDelayMs==250 && c->doc().layers[fl[2]].frameDelayMs!=250, "Animation: durations set on the chosen frames");
+      FrameTag t; t.name="walk"; t.from=1; t.to=2; t.direction=2; c->setFrameTags({t}); c->setAnimationLoops(3);
+      Shape px; px.type=ShapeType::Rect; px.rect=QRectF(0,0,20,20); px.fill.type=FillType::Bitmap; px.fill.pixelated=true;
+      { QImage tex(2,2,QImage::Format_ARGB32); tex.setPixel(0,0,qRgb(255,0,0)); tex.setPixel(1,0,qRgb(0,0,255)); tex.setPixel(0,1,qRgb(0,255,0)); tex.setPixel(1,1,qRgb(255,255,0)); px.fill.image=tex; }
+      px.fill.p0=QPointF(0,20); px.fill.p1=QPointF(20,20); px.fill.p2=QPointF(0,0); px.stroke.enabled=false;
+      Document rt; rt.shapes={px}; rt.layers=c->doc().layers; rt.frameTags=c->doc().frameTags; rt.animLoops=3;
+      rt=Document::fromJson(rt.toJson());
+      check(rt.layers[0].frameBackground && rt.animLoops==3 && rt.frameTags.size()==1 && rt.frameTags[0].name=="walk" && rt.frameTags[0].direction==2 && rt.shapes[0].fill.pixelated,
+            "Animation: backgrounds, tags, plays and pixelated bitmaps round-trip");
+      { QImage img(20,20,QImage::Format_ARGB32_Premultiplied); img.fill(Qt::white); { QPainter g(&img); paintShape(g,px); }
+        check(img.pixel(9,5)==qRgb(255,0,0) && img.pixel(10,5)==qRgb(0,0,255), "Animation: a pixelated bitmap scales without smoothing"); }
+      QTemporaryDir td;
+      check(c->exportAnimation(td.path()+"/a.png",1), "Animation: APNG export");
+      { QFile f(td.path()+"/a.png"); f.open(QIODevice::ReadOnly); const QByteArray b=f.readAll(); check(b.contains("acTL") && b.count("fcTL")==3 && b.contains("fdAT"), "Animation: the APNG holds every frame"); }
+      { Canvas* c2=new Canvas; c2->newDocument(); check(c2->importApng(td.path()+"/a.png") && c2->doc().layers.size()==3, "Animation: the APNG reads back as frames"); delete c2; }
+      check(c->exportAnimation(td.path()+"/a.gif",0), "Animation: transparent GIF export");
+      { QMovie mv(td.path()+"/a.gif"); check(mv.frameCount()==3 && mv.jumpToFrame(0), "Animation: the GIF has every frame");
+        const QImage g0=mv.currentImage().convertToFormat(QImage::Format_ARGB32);
+        check(g0.pixel(33,13)==qRgb(0,200,0) && g0.pixel(4,4)==qRgb(250,0,0), "Animation: GIF colours kept exactly when they fit the palette"); }
+      check(c->exportAnimation(td.path()+"/s.png",3,1.0,1,2), "Animation: sprite sheet export");
+      { const QImage sh(td.path()+"/s.png"); QFile jf(td.path()+"/s.json"); jf.open(QIODevice::ReadOnly); const QJsonObject j=QJsonDocument::fromJson(jf.readAll()).object();
+        check(sh.size()==QSize(80,20) && j["frames"].toArray().size()==2 && j["meta"].toObject()["frameTags"].toArray().size()==1, "Animation: the sprite sheet and its JSON list the frames"); }
+      check(c->exportAnimation(td.path()+"/f.png",2,2.0) && QImage(td.path()+"/f_001.png").size()==QSize(80,40) && QFile::exists(td.path()+"/f_003.png"), "Animation: numbered PNGs at a scale");
+      c->showFrame(1);
+      const QImage plain=c->grab().toImage();
+      c->setOnionSkin(1,0,0.6); const QImage onion=c->grab().toImage(); c->setOnionSkin(0,0,0.35);
+      const QPoint at=c->mapToView(QPointF(33,13)).toPoint();
+      check(plain.pixelColor(at)!=onion.pixelColor(at), "Animation: onion skin shows the frame before");
+      c->deleteFrames({0,1});
+      check(c->doc().frameLayers().size()==1 && c->doc().layers.size()==2, "Animation: deleting frames keeps the rest and the background"); }
     // RTF file import (G-M): read a small .rtf into a styled Text shape.
     { c->newDocument();
       QString rp=QDir::tempPath()+"/xq_test.rtf";

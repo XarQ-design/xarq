@@ -707,7 +707,9 @@ int main(int argc, char** argv) {
     // otherwise block the event loop and hang every scripted grab).
     if(!interactive) w.setShowWelcome(false);
     w.setDeferStartup(interactive);   // the splash drives recovery+welcome once it fades
-    if(!openPath.isEmpty()){ if(openPath.endsWith(".svg",Qt::CaseInsensitive)){ w.canvas()->newDocument(); w.canvas()->importSvgFile(openPath); } else if(openPath.endsWith(".cdr",Qt::CaseInsensitive)){ w.canvas()->newDocument(); w.canvas()->importCdr(openPath); } else if(openPath.endsWith(".dwg",Qt::CaseInsensitive)){ w.canvas()->newDocument(); w.canvas()->importVectorFile(openPath); } else w.canvas()->load(openPath); }
+    if(!openPath.isEmpty()){ if(openPath.endsWith(".svg",Qt::CaseInsensitive)){ w.canvas()->newDocument(); w.canvas()->importSvgFile(openPath); } else if(openPath.endsWith(".cdr",Qt::CaseInsensitive)){ w.canvas()->newDocument(); w.canvas()->importCdr(openPath); } else if(openPath.endsWith(".dwg",Qt::CaseInsensitive)){ w.canvas()->newDocument(); w.canvas()->importVectorFile(openPath); }
+        else if(openPath.endsWith(".xar",Qt::CaseInsensitive)||openPath.endsWith(".xas",Qt::CaseInsensitive)||openPath.endsWith(".web",Qt::CaseInsensitive)) w.canvas()->load(openPath);
+        else { w.canvas()->newDocument(); if(!w.canvas()->dropImportByExtension(openPath)) w.canvas()->load(openPath); } }   // any other format: as a drop would import it
 
     if (!savePath.isEmpty()) return w.canvas()->save(savePath)?0:2;   // headless save self-test
     if (!exportPath.isEmpty()) {   // headless export self-test

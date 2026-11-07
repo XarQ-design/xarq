@@ -867,7 +867,7 @@ void paintShape(QPainter& g, const Shape& s) {
         g.setBrush(br);
         g.setPen(Qt::NoPen);
         g.setRenderHint(QPainter::Antialiasing, true);
-        g.setRenderHint(QPainter::SmoothPixmapTransform, bitmap || mesh || square || fractal);
+        g.setRenderHint(QPainter::SmoothPixmapTransform, (bitmap && !s.fill.pixelated) || mesh || square || fractal);
         if (clipToTile) { g.save(); g.setClipPath(tileClip, Qt::IntersectClip); g.drawPath(dp); g.restore(); }
         else g.drawPath(dp);
     }

@@ -540,33 +540,220 @@ void BitmapGallery::refresh(){
 }
 
 // ============================================================================
-// AnimationPanel — frames are layers; play preview + animated-GIF export
+// AnimationPanel — frames are layers (those not marked as backgrounds shown behind every frame)
 // ============================================================================
 AnimationPanel::AnimationPanel(Canvas* c,QWidget* parent):QWidget(parent),m_c(c){
     auto* V=new QVBoxLayout(this); V->setContentsMargins(8,8,8,8); V->setSpacing(6);
-    m_info=new QLabel; V->addWidget(m_info);
-    auto* delay=new QSpinBox; delay->setRange(20,5000); delay->setValue(120); delay->setSuffix(" ms");
-    auto* drow=new QHBoxLayout; drow->addWidget(new QLabel("Frame delay")); drow->addWidget(delay); drow->addStretch(); V->addLayout(drow);
-    auto* brow=new QHBoxLayout; auto* playBtn=new QPushButton("▶ Play"); auto* exp=new QPushButton("Export GIF…");
-    brow->addWidget(playBtn); brow->addWidget(exp); V->addLayout(brow);
-    auto* hint=new QLabel("Each layer is an animation frame.\nAdd frames in the Pages & Layers gallery."); hint->setStyleSheet("color:#889;"); hint->setWordWrap(true); V->addWidget(hint);
+    auto tool=[this](const QString& text,const QString& tip){ auto* b=new QToolButton; b->setText(text); b->setToolTip(tip); b->setAutoRaise(true); return b; };
+    auto section=[V](const QString& title){ auto* l=new QLabel(title); l->setStyleSheet("font-weight:600; margin-top:6px;"); V->addWidget(l); };
+
+    // Transport
+    auto* tr=new QHBoxLayout; tr->setSpacing(2);
+    auto* first=tool("«","First frame"); auto* prev=tool("‹","Previous frame"); m_playBtn=tool("▶","Play"); auto* next=tool("›","Next frame"); auto* last=tool("»","Last frame");
+    m_loopBtn=tool("Loop","Play over and over"); m_loopBtn->setCheckable(true); m_loopBtn->setChecked(true);
+    for(auto* b:{first,prev,m_playBtn,next,last}){ b->setMinimumSize(30,26); b->setStyleSheet("font-size:17px;"); tr->addWidget(b); }
+    tr->addStretch(); tr->addWidget(m_loopBtn); V->addLayout(tr);
+    m_range=new QComboBox; m_range->setToolTip("What Play plays: every frame, or the frames of one tag"); V->addWidget(m_range);
+    m_info=new QLabel; m_info->setStyleSheet("color:#889;"); V->addWidget(m_info);
+
+    // Frames
+    m_frames=new QListWidget; m_frames->setIconSize(QSize(48,48)); m_frames->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    m_frames->setDragDropMode(QAbstractItemView::InternalMove); m_frames->setDefaultDropAction(Qt::MoveAction); m_frames->setMinimumHeight(180);
+    m_frames->setToolTip("Click to show a frame; drag to reorder; Shift/Ctrl-click to pick several");
+    V->addWidget(m_frames);
+    auto* fr=new QHBoxLayout; fr->setSpacing(2);
+    auto* addB=tool("New","Add an empty frame after this one"); auto* dupB=tool("Duplicate","Copy this frame"); auto* delB=tool("Delete","Delete the selected frames");
+    auto* upB=tool("↑","Move earlier"); auto* downB=tool("↓","Move later");
+    for(auto* b:{addB,dupB,delB}) fr->addWidget(b); fr->addStretch(); fr->addWidget(upB); fr->addWidget(downB); V->addLayout(fr);
+    auto* dr=new QHBoxLayout; m_delay=new QSpinBox; m_delay->setRange(10,60000); m_delay->setSingleStep(10); m_delay->setSuffix(" ms"); m_delay->setValue(100);
+    auto* allB=tool("All frames","Give every frame this duration");
+    dr->addWidget(new QLabel("Duration")); dr->addWidget(m_delay); dr->addWidget(allB); dr->addStretch(); V->addLayout(dr);
+    auto* bgB=tool("Show in every frame","Turn the selected frame into a background shown behind every frame");
+
+    // Backgrounds
+    section("Backgrounds");
+    m_backs=new QListWidget; m_backs->setMaximumHeight(70); m_backs->setToolTip("Layers shown behind every frame"); V->addWidget(m_backs);
+    auto* br=new QHBoxLayout; auto* unBgB=tool("Make a frame","Turn the selected background back into a frame of its own");
+    br->addWidget(bgB); br->addWidget(unBgB); br->addStretch(); V->addLayout(br);
+
+    // Onion skin
+    section("Onion skin");
+    auto* on=new QHBoxLayout; m_onion=new QCheckBox("Show"); m_onionBefore=new QSpinBox; m_onionAfter=new QSpinBox;
+    for(auto* sp:{m_onionBefore,m_onionAfter}){ sp->setRange(0,5); sp->setValue(1); }
+    m_onionBefore->setToolTip("Frames before (shown red)"); m_onionAfter->setToolTip("Frames after (shown blue)");
+    on->addWidget(m_onion); on->addWidget(new QLabel("before")); on->addWidget(m_onionBefore); on->addWidget(new QLabel("after")); on->addWidget(m_onionAfter); on->addStretch(); V->addLayout(on);
+    m_onionOpacity=new QSlider(Qt::Horizontal); m_onionOpacity->setRange(5,100); m_onionOpacity->setValue(35); m_onionOpacity->setToolTip("Onion skin strength");
+    V->addWidget(m_onionOpacity);
+
+    // Tags
+    section("Tags");
+    m_tags=new QListWidget; m_tags->setMaximumHeight(90); m_tags->setToolTip("Named frame ranges; double-click to rename"); V->addWidget(m_tags);
+    auto* tg=new QHBoxLayout; auto* tagB=tool("Tag selection","Name the selected frames as a range"); auto* untagB=tool("Delete","Delete the selected tag");
+    m_tagDir=new QComboBox; m_tagDir->addItems({"Forward","Reverse","Ping-pong"}); m_tagDir->setToolTip("How the selected tag plays");
+    tg->addWidget(tagB); tg->addWidget(untagB); tg->addWidget(m_tagDir); tg->addStretch(); V->addLayout(tg);
+
+    // Export
+    section("Export");
+    auto* ex1=new QHBoxLayout; m_format=new QComboBox; m_format->addItems({"Animated GIF","Animated PNG","PNG for each frame","Sprite sheet + JSON"});
+    m_scale=new QDoubleSpinBox; m_scale->setRange(0.1,32); m_scale->setDecimals(2); m_scale->setValue(1.0); m_scale->setSuffix(" ×"); m_scale->setToolTip("Size, as a multiple of the page");
+    ex1->addWidget(m_format); ex1->addWidget(m_scale); V->addLayout(ex1);
+    auto* ex2=new QHBoxLayout; m_transparent=new QCheckBox("Transparent"); m_transparent->setChecked(true); m_transparent->setToolTip("Leave the background clear; off puts the frames on white");
+    m_loops=new QSpinBox; m_loops->setRange(0,1000); m_loops->setSpecialValueText("forever"); m_loops->setToolTip("Times the exported animation plays");
+    auto* expB=new QPushButton("Export…");
+    ex2->addWidget(m_transparent); ex2->addWidget(new QLabel("Plays")); ex2->addWidget(m_loops); ex2->addStretch(); ex2->addWidget(expB); V->addLayout(ex2);
     V->addStretch();
-    m_timer=new QTimer(this); m_timer->setInterval(120);
-    connect(delay,QOverload<int>::of(&QSpinBox::valueChanged),this,[this](int v){ m_timer->setInterval(v); });
-    connect(m_timer,&QTimer::timeout,this,[this]{ tick(); });
-    connect(playBtn,&QPushButton::clicked,this,[this,playBtn]{ if(m_playing){ stop(); playBtn->setText("▶ Play"); } else { play(); if(m_playing) playBtn->setText("■ Stop"); } });
-    connect(exp,&QPushButton::clicked,this,[this,delay]{ QString p=QFileDialog::getSaveFileName(this,"Export Animated GIF","animation.gif","GIF (*.gif)",nullptr,QFileDialog::DontUseNativeDialog);
-        if(!p.isEmpty()){ if(!p.endsWith(".gif",Qt::CaseInsensitive))p+=".gif"; m_c->exportGif(p,delay->value()); } });
-    connect(m_c,&Canvas::documentChanged,this,[this]{ if(!m_playing) m_info->setText(QString("Frames (layers): %1").arg(m_c->doc().layers.size())); });
-    m_info->setText(QString("Frames (layers): %1").arg(m_c->doc().layers.size()));
+
+    m_timer=new QTimer(this); m_timer->setSingleShot(true); connect(m_timer,&QTimer::timeout,this,[this]{ step(); });
+    m_thumbTimer=new QTimer(this); m_thumbTimer->setSingleShot(true); m_thumbTimer->setInterval(250); connect(m_thumbTimer,&QTimer::timeout,this,[this]{ renderThumbs(); });
+
+    auto goTo=[this](int f){ if(m_playing) stop(); const int n=m_c->doc().frameLayers().size(); if(n<1) return; m_c->showFrame(qBound(0,f,n-1)); };
+    connect(first,&QToolButton::clicked,this,[goTo]{ goTo(0); });
+    connect(last,&QToolButton::clicked,this,[this,goTo]{ goTo(m_c->doc().frameLayers().size()-1); });
+    connect(prev,&QToolButton::clicked,this,[this,goTo]{ const int n=m_c->doc().frameLayers().size(); if(n) goTo((m_c->currentFrame()-1+n)%n); });
+    connect(next,&QToolButton::clicked,this,[this,goTo]{ const int n=m_c->doc().frameLayers().size(); if(n) goTo((m_c->currentFrame()+1)%n); });
+    connect(m_playBtn,&QToolButton::clicked,this,[this]{ if(m_playing) stop(); else play(); });
+
+    connect(m_frames,&QListWidget::itemSelectionChanged,this,[this]{ if(m_building) return;
+        const QVector<int> sel=selectedFrames(); if(sel.size()==1 && !m_playing && sel[0]!=m_c->currentFrame()) m_c->showFrame(sel[0]); syncControls(); });
+    connect(m_frames->model(),&QAbstractItemModel::rowsMoved,this,[this](const QModelIndex&,int start,int,const QModelIndex&,int row){
+        if(m_building) return; const int to = row > start ? row-1 : row; m_c->moveFrame(start,to); });
+    connect(addB,&QToolButton::clicked,this,[this]{ m_c->insertFrame(m_c->currentFrame(),false); });
+    connect(dupB,&QToolButton::clicked,this,[this]{ m_c->insertFrame(m_c->currentFrame(),true); });
+    connect(delB,&QToolButton::clicked,this,[this]{ QVector<int> s=selectedFrames(); if(s.isEmpty() && m_c->currentFrame()>=0) s<<m_c->currentFrame(); m_c->deleteFrames(s); });
+    connect(upB,&QToolButton::clicked,this,[this]{ const int f=m_c->currentFrame(); if(f>0) m_c->moveFrame(f,f-1); });
+    connect(downB,&QToolButton::clicked,this,[this]{ const int f=m_c->currentFrame(); if(f>=0 && f+1<m_c->doc().frameLayers().size()) m_c->moveFrame(f,f+1); });
+    connect(m_delay,QOverload<int>::of(&QSpinBox::valueChanged),this,[this](int v){ if(m_building) return;
+        QVector<int> s=selectedFrames(); if(s.isEmpty() && m_c->currentFrame()>=0) s<<m_c->currentFrame(); m_c->setFrameDelay(s,v); });
+    connect(allB,&QToolButton::clicked,this,[this]{ QVector<int> all; for(int k=0;k<m_c->doc().frameLayers().size();++k) all<<k; m_c->setFrameDelay(all,m_delay->value()); });
+    connect(bgB,&QToolButton::clicked,this,[this]{ const QVector<int> fr=m_c->doc().frameLayers(); const int f=m_c->currentFrame();
+        if(fr.size()<2){ m_info->setText("An animation needs at least one frame."); return; } if(f>=0) m_c->setFrameBackground(fr[f],true); });
+    connect(unBgB,&QToolButton::clicked,this,[this]{ auto* it=m_backs->currentItem(); if(it) m_c->setFrameBackground(it->data(Qt::UserRole).toInt(),false); });
+
+    auto onion=[this]{ if(m_onion->isChecked()) m_c->setOnionSkin(m_onionBefore->value(),m_onionAfter->value(),m_onionOpacity->value()/100.0); else m_c->setOnionSkin(0,0,0.35); };
+    connect(m_onion,&QCheckBox::toggled,this,onion);
+    connect(m_onionBefore,QOverload<int>::of(&QSpinBox::valueChanged),this,onion);
+    connect(m_onionAfter,QOverload<int>::of(&QSpinBox::valueChanged),this,onion);
+    connect(m_onionOpacity,&QSlider::valueChanged,this,onion);
+
+    connect(tagB,&QToolButton::clicked,this,[this]{ QVector<int> s=selectedFrames(); if(s.isEmpty()){ m_info->setText("Select the frames to tag first."); return; }
+        bool ok=false; const QString name=QInputDialog::getText(this,"Tag frames","Name for these frames:",QLineEdit::Normal,QString("Tag %1").arg(m_c->doc().frameTags.size()+1),&ok);
+        if(!ok || name.trimmed().isEmpty()) return;
+        FrameTag t; t.name=name.trimmed(); t.from=*std::min_element(s.begin(),s.end()); t.to=*std::max_element(s.begin(),s.end());
+        QVector<FrameTag> tags=m_c->doc().frameTags; tags<<t; m_c->setFrameTags(tags); });
+    connect(untagB,&QToolButton::clicked,this,[this]{ const int r=m_tags->currentRow(); if(r<0) return; QVector<FrameTag> tags=m_c->doc().frameTags; if(r<tags.size()){ tags.remove(r); m_c->setFrameTags(tags); } });
+    connect(m_tags,&QListWidget::currentRowChanged,this,[this](int r){ if(m_building) return; const auto& tags=m_c->doc().frameTags;
+        if(r>=0 && r<tags.size()){ const QSignalBlocker b(m_tagDir); m_tagDir->setCurrentIndex(tags[r].direction); } });
+    connect(m_tagDir,QOverload<int>::of(&QComboBox::currentIndexChanged),this,[this](int d){ if(m_building) return; const int r=m_tags->currentRow();
+        QVector<FrameTag> tags=m_c->doc().frameTags; if(r>=0 && r<tags.size() && tags[r].direction!=d){ tags[r].direction=d; m_c->setFrameTags(tags); } });
+    connect(m_tags,&QListWidget::itemDoubleClicked,this,[this](QListWidgetItem*){ const int r=m_tags->currentRow(); QVector<FrameTag> tags=m_c->doc().frameTags; if(r<0||r>=tags.size()) return;
+        bool ok=false; const QString n=QInputDialog::getText(this,"Rename tag","Name:",QLineEdit::Normal,tags[r].name,&ok); if(ok && !n.trimmed().isEmpty()){ tags[r].name=n.trimmed(); m_c->setFrameTags(tags); } });
+
+    connect(m_loops,QOverload<int>::of(&QSpinBox::valueChanged),this,[this](int v){ if(!m_building) m_c->setAnimationLoops(v); });
+    connect(expB,&QPushButton::clicked,this,[this]{
+        static const char* filters[]={"GIF (*.gif)","Animated PNG (*.png *.apng)","PNG (*.png)","PNG (*.png)"};
+        static const char* names[]={"animation.gif","animation.png","frame.png","sprites.png"};
+        const int fmt=m_format->currentIndex();
+        QString p=QFileDialog::getSaveFileName(this,"Export Animation",names[fmt],filters[fmt],nullptr,QFileDialog::DontUseNativeDialog);
+        if(p.isEmpty()) return;
+        if(QFileInfo(p).suffix().isEmpty()) p+= fmt==0 ? ".gif" : ".png";
+        int from=0, to=-1; const int r=m_range->currentIndex()-1; const auto& tags=m_c->doc().frameTags;
+        if(r>=0 && r<tags.size()){ from=tags[r].from; to=tags[r].to; }
+        const bool ok=m_c->exportAnimation(p,fmt,m_scale->value(),from,to,m_transparent->isChecked());
+        m_info->setText(ok ? QString("Exported %1").arg(QFileInfo(p).fileName()) : QString("Couldn't export %1").arg(QFileInfo(p).fileName())); });
+
+    connect(m_c,&Canvas::documentChanged,this,[this]{ if(!m_playing) rebuild(); });
+    rebuild();
 }
-void AnimationPanel::play(){ if(m_c->doc().layers.size()<2){ m_info->setText("Add layers (frames) to animate."); return; }
-    m_savedVis.clear(); for(auto& l:m_c->doc().layers) m_savedVis.push_back(l.visible); m_frame=0; m_playing=true; tick(); m_timer->start(); }
-void AnimationPanel::stop(){ m_playing=false; m_timer->stop();
-    if(m_savedVis.size()==m_c->doc().layers.size()) for(int k=0;k<m_c->doc().layers.size();++k) m_c->doc().layers[k].visible=m_savedVis[k];
-    m_c->refreshAll(); m_info->setText(QString("Frames (layers): %1").arg(m_c->doc().layers.size())); }
-void AnimationPanel::tick(){ int n=m_c->doc().layers.size(); if(n<1)return;
-    for(int k=0;k<n;++k) m_c->doc().layers[k].visible=(k==m_frame); m_c->refreshAll();
-    m_info->setText(QString("Frame %1 / %2").arg(m_frame+1).arg(n)); m_frame=(m_frame+1)%n; }
+
+QVector<int> AnimationPanel::selectedFrames() const {
+    QVector<int> s; for(auto* it : m_frames->selectedItems()) s << m_frames->row(it);
+    std::sort(s.begin(),s.end()); return s;
+}
+
+void AnimationPanel::rebuild(){
+    m_building=true;
+    const Document& d=m_c->doc();
+    const QVector<int> fr=d.frameLayers();
+    const int cur=m_c->currentFrame();
+    if(m_frames->count()!=fr.size()){ m_frames->clear(); for(int k=0;k<fr.size();++k) m_frames->addItem(new QListWidgetItem); }
+    for(int k=0;k<fr.size();++k){
+        const Layer& L=d.layers[fr[k]];
+        m_frames->item(k)->setText(QString("%1  %2\n%3 ms").arg(k+1).arg(L.name).arg(L.frameDelayMs>0?L.frameDelayMs:100));
+    }
+    if(cur>=0 && cur<m_frames->count() && !m_frames->item(cur)->isSelected()){ m_frames->clearSelection(); m_frames->item(cur)->setSelected(true); m_frames->setCurrentRow(cur, QItemSelectionModel::NoUpdate); }
+    m_backs->clear();
+    for(int i=0;i<d.layers.size();++i) if(d.layers[i].frameBackground){ auto* it=new QListWidgetItem(d.layers[i].name); it->setData(Qt::UserRole,i); m_backs->addItem(it); }
+    const int rangeWas=m_range->currentIndex();
+    m_range->clear(); m_range->addItem(QString("All frames (%1)").arg(fr.size()));
+    m_tags->clear();
+    static const char* dirs[]={"","  ◀","  ◀▶"};
+    for(const FrameTag& t : d.frameTags){
+        m_range->addItem(QString("%1 (%2–%3)").arg(t.name).arg(t.from+1).arg(t.to+1));
+        auto* it=new QListWidgetItem(QString("%1   %2–%3%4").arg(t.name).arg(t.from+1).arg(t.to+1).arg(dirs[qBound(0,t.direction,2)]));
+        it->setForeground(t.color.darker(110)); m_tags->addItem(it);
+    }
+    m_range->setCurrentIndex(qBound(0,rangeWas,m_range->count()-1));
+    m_loops->setValue(d.animLoops);
+    m_info->setText(fr.size()==1 ? QString("1 frame") : QString("%1 frames%2").arg(fr.size()).arg(cur>=0 ? QString(", showing %1").arg(cur+1) : QString()));
+    syncControls();
+    m_building=false;
+    m_thumbTimer->start();
+}
+
+void AnimationPanel::syncControls(){
+    const bool was=m_building; m_building=true;
+    const QVector<int> fr=m_c->doc().frameLayers();
+    QVector<int> s=selectedFrames(); if(s.isEmpty() && m_c->currentFrame()>=0) s<<m_c->currentFrame();
+    if(!s.isEmpty() && s[0]<fr.size()){ const int d=m_c->doc().layers[fr[s[0]]].frameDelayMs; m_delay->setValue(d>0?d:100); }
+    m_building=was;
+}
+
+void AnimationPanel::renderThumbs(){
+    if(!isVisible() || m_playing) return;
+    const int n=qMin(m_frames->count(), 400);                 // a long animation gets text-only rows past this
+    for(int k=0;k<n;++k){
+        const QImage img=m_c->renderFrame(k,QSize(48,48),true);
+        if(!img.isNull()) m_frames->item(k)->setIcon(QIcon(QPixmap::fromImage(img)));
+    }
+}
+
+QVector<int> AnimationPanel::playSequence() const {
+    const int n=m_c->doc().frameLayers().size();
+    int from=0, to=n-1, dir=0;
+    const int r=m_range->currentIndex()-1; const auto& tags=m_c->doc().frameTags;
+    if(r>=0 && r<tags.size()){ from=qBound(0,tags[r].from,n-1); to=qBound(from,tags[r].to,n-1); dir=tags[r].direction; }
+    QVector<int> seq; for(int f=from;f<=to;++f) seq<<f;
+    if(dir==1) std::reverse(seq.begin(),seq.end());
+    else if(dir==2) for(int f=to-1;f>from;--f) seq<<f;          // there and back, without repeating the ends
+    return seq;
+}
+
+void AnimationPanel::play(){
+    m_seq=playSequence();
+    if(m_seq.size()<2){ m_info->setText("Add frames to play."); return; }
+    m_restore=m_c->currentFrame(); m_playing=true; m_seqPos=0; m_playBtn->setText("■"); m_playBtn->setToolTip("Stop");
+    step();
+}
+
+void AnimationPanel::stop(){
+    m_playing=false; m_timer->stop(); m_playBtn->setText("▶"); m_playBtn->setToolTip("Play");
+    const int n=m_c->doc().frameLayers().size();
+    if(m_restore>=0 && m_restore<n) m_c->showFrame(m_restore); else rebuild();
+}
+
+void AnimationPanel::step(){
+    if(!m_playing) return;
+    const QVector<int> fr=m_c->doc().frameLayers();
+    if(m_seqPos>=m_seq.size()){
+        if(!m_loopBtn->isChecked()){ stop(); return; }
+        m_seqPos=0;
+    }
+    const int f=m_seq[m_seqPos++];
+    if(f<0 || f>=fr.size()){ stop(); return; }
+    m_c->showFrame(f,true);
+    m_info->setText(QString("Playing frame %1 of %2").arg(f+1).arg(fr.size()));
+    const int d=m_c->doc().layers[fr[f]].frameDelayMs;
+    m_timer->start(d>0?d:100);
+}
 
 } // namespace xara

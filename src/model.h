@@ -69,6 +69,7 @@ struct Fill {
     bool     rainbow = false;                 // gradient cycles through hue (FILLEFFECT_RAINBOW)
     bool     rainbowAlt = false;              // ... the long way round the colour wheel
     bool     fractal = false;                 // procedural fractal/noise texture (image holds it; type stays Linear as fallback)
+    bool     pixelated = false;               // bitmap scaled without smoothing (pixel art, cursors, sprites)
     bool     tiled = false;                   // BITMAPFILL attribute TILES across the whole path (Xara fill-map default Repeat=2); a placed NODE_BITMAP is one copy
     // Non-destructive photo adjustments (Gap 4): re-editable params; `image` is re-baked from `origImage`.
     struct Adjust { int brightness=0,contrast=0,saturation=0,blur=0,sharpen=0,vignette=0,cropL=0,cropR=0,cropT=0,cropB=0,lens=0,hdr=0; bool gray=false,redeye=false;
@@ -428,6 +429,15 @@ struct Layer {
     bool    master  = false;   // a "master page" layer: its objects are drawn on EVERY page
     bool    printable = true;  // false => visible on screen but excluded from print/export (guide/annotation layer)
     int     frameDelayMs = 0;  // animation: per-frame display time (GIF export); 0 = use the export default
+    bool    frameBackground = false;   // animation: shown behind EVERY frame, not a frame of its own
+};
+
+// A named run of animation frames (frame numbers, not layer indices), e.g. an Aseprite tag "walk".
+struct FrameTag {
+    QString name;
+    int     from = 0, to = 0;      // inclusive frame range
+    int     direction = 0;         // 0 forward, 1 reverse, 2 ping-pong
+    QColor  color{120, 150, 200};
 };
 
 // Per-page web-publish properties (manual: page name / SEO). All optional; empty => the page falls back
@@ -487,6 +497,8 @@ public:
     bool    fluidSite = false;              // web publish: whole page scales fluidly to the viewport width (continuous), not a stepped fixed stage
     bool    presentSteps = false;           // web publish: reveal content layer-by-layer as presentation steps (click / arrow keys advance)
     QString webHeadHtml, webBodyHtml;       // site-owner raw HTML injected before </head> / before </body> (analytics, verification, cookie scripts)
+    int     animLoops = 0;                  // animation export: times to play (0 = loop forever)
+    QVector<FrameTag> frameTags;            // named frame ranges (play ranges in the Animation panel)
 
     QRectF pageRect(int i) const { double adv=pageSize.height()+pageGap; return QRectF(0, i*adv, pageSize.width(), pageSize.height()); }
     QRectF allPagesRect() const { return QRectF(0,0, pageSize.width(), pageCount*pageSize.height()+(pageCount-1)*pageGap); }
@@ -504,6 +516,8 @@ public:
     int  addShape(const Shape& s) { shapes.push_back(s); return shapes.size()-1; }
     QRectF contentBounds() const;
     bool layerVisible(int i) const { return i<0 || i>=layers.size() || layers[i].visible; }
+    // Animation: the layers that are frames (every layer not marked as a frame background), in frame order.
+    QVector<int> frameLayers() const { QVector<int> f; for(int i=0;i<layers.size();++i) if(!layers[i].frameBackground) f << i; return f; }
     bool layerLocked(int i)  const { return i>=0 && i<layers.size() && layers[i].locked; }
 
     QJsonObject toJson() const;

@@ -965,7 +965,7 @@ QJsonObject Shape::toJson() const {
     QJsonObject f; f["t"]=int(fill.type); f["c"]=colJson(fill.color); if(fill.colorRef>=0) f["cRef"]=fill.colorRef;
     if(fill.spread!=QGradient::PadSpread) f["spread"]=int(fill.spread);
     if(fill.rainbow) f["rainbow"]=true; if(fill.rainbowAlt) f["rainbowAlt"]=true;
-    if(fill.fractal) f["fractal"]=true; if(fill.tiled) f["tiled"]=true;
+    if(fill.fractal) f["fractal"]=true; if(fill.tiled) f["tiled"]=true; if(fill.pixelated) f["pix"]=true;
     if(!fill.adjust.isIdentity()){ const Fill::Adjust& a=fill.adjust;
         f["adj"]=QJsonObject{{"b",a.brightness},{"c",a.contrast},{"s",a.saturation},{"bl",a.blur},{"sh",a.sharpen},{"vg",a.vignette},
             {"cl",a.cropL},{"cr",a.cropR},{"ct",a.cropT},{"cb",a.cropB},{"ln",a.lens},{"hd",a.hdr},{"g",a.gray},{"r",a.redeye},
@@ -1129,7 +1129,7 @@ Shape Shape::fromJson(const QJsonObject& o) {
     s.fill.type=FillType(f["t"].toInt()); s.fill.color=colFrom(f["c"].toObject()); s.fill.colorRef=f["cRef"].toInt(-1);
     if(f.contains("spread")) s.fill.spread=QGradient::Spread(f["spread"].toInt());
     s.fill.rainbow=f["rainbow"].toBool(false); s.fill.rainbowAlt=f["rainbowAlt"].toBool(false);
-    s.fill.fractal=f["fractal"].toBool(false); s.fill.tiled=f["tiled"].toBool(false);
+    s.fill.fractal=f["fractal"].toBool(false); s.fill.tiled=f["tiled"].toBool(false); s.fill.pixelated=f["pix"].toBool(false);
     if(f.contains("adj")){ auto a=f["adj"].toObject(); Fill::Adjust& d=s.fill.adjust;
         d.brightness=a["b"].toInt(); d.contrast=a["c"].toInt(); d.saturation=a["s"].toInt(); d.blur=a["bl"].toInt(); d.sharpen=a["sh"].toInt(); d.vignette=a["vg"].toInt();
         d.cropL=a["cl"].toInt(); d.cropR=a["cr"].toInt(); d.cropT=a["ct"].toInt(); d.cropB=a["cb"].toInt(); d.lens=a["ln"].toInt(); d.hdr=a["hd"].toInt(); d.gray=a["g"].toBool(); d.redeye=a["r"].toBool();
@@ -1295,7 +1295,9 @@ QJsonObject Document::toJson() const {
     if(!namedColors.isEmpty()){ QJsonArray nc; for(auto& n: namedColors)
         nc.append(QJsonObject{{"name",n.name},{"c",(qint64)n.color.rgba()},{"kind",n.kind},{"parent",n.parent},{"amount",n.amount},{"theme",n.theme},{"spot",n.spot}});
         o["namedColors"]=nc; }
-    if(layers.size()>1){ QJsonArray ly; for(auto& l: layers){ QJsonObject lo{{"name",l.name},{"vis",l.visible},{"lock",l.locked},{"master",l.master}}; if(l.frameDelayMs>0) lo["fdly"]=l.frameDelayMs; if(!l.printable) lo["noprint"]=true; ly.append(lo); } o["layers"]=ly; }
+    if(layers.size()>1){ QJsonArray ly; for(auto& l: layers){ QJsonObject lo{{"name",l.name},{"vis",l.visible},{"lock",l.locked},{"master",l.master}}; if(l.frameDelayMs>0) lo["fdly"]=l.frameDelayMs; if(l.frameBackground) lo["fbg"]=true; if(!l.printable) lo["noprint"]=true; ly.append(lo); } o["layers"]=ly; }
+    if(animLoops>0) o["aloops"]=animLoops;
+    if(!frameTags.isEmpty()){ QJsonArray ta; for(const FrameTag& t: frameTags) ta.append(QJsonObject{{"name",t.name},{"from",t.from},{"to",t.to},{"dir",t.direction},{"color",t.color.name()}}); o["ftags"]=ta; }
     if(!textStyles.isEmpty()){ QJsonArray ts; for(auto& t: textStyles) ts.append(QJsonObject{{"name",t.name},{"font",t.font.toString()},{"c",(qint64)t.color.rgba()},{"a",t.align}}); o["textStyles"]=ts; }
     if(!breakpoints.isEmpty()){ QJsonArray bp; for(int w: breakpoints) bp.append(w); o["breakpoints"]=bp; }
     if(!webTitle.isEmpty()||!webDescription.isEmpty()||!webKeywords.isEmpty()||!webBaseUrl.isEmpty()||!webAuthor.isEmpty())
@@ -1320,7 +1322,7 @@ Document Document::fromJson(const QJsonObject& o) {
         n.color=QColor::fromRgba((QRgb)j["c"].toVariant().toLongLong()); n.kind=j["kind"].toInt(); n.parent=j["parent"].toInt(-1);
         n.amount=j["amount"].toDouble(0.5); n.theme=j["theme"].toBool(); n.spot=j["spot"].toBool(false); d.namedColors.append(n); }
     if(o.contains("layers")){ d.layers.clear(); for(auto v: o["layers"].toArray()){ auto j=v.toObject(); Layer l;
-        l.name=j["name"].toString("Layer"); l.visible=j["vis"].toBool(true); l.locked=j["lock"].toBool(false); l.master=j["master"].toBool(false); l.printable=!j["noprint"].toBool(false); l.frameDelayMs=j["fdly"].toInt(0); d.layers.append(l); }
+        l.name=j["name"].toString("Layer"); l.visible=j["vis"].toBool(true); l.locked=j["lock"].toBool(false); l.master=j["master"].toBool(false); l.printable=!j["noprint"].toBool(false); l.frameDelayMs=j["fdly"].toInt(0); l.frameBackground=j["fbg"].toBool(false); d.layers.append(l); }
         if(d.layers.isEmpty()) d.layers.append(Layer{}); }
     for (auto v : o["textStyles"].toArray()){ auto j=v.toObject(); TextStyle t; t.name=j["name"].toString();
         t.font.fromString(j["font"].toString("DejaVu Sans,36")); t.color=QColor::fromRgba((QRgb)j["c"].toVariant().toLongLong()); t.align=j["a"].toInt(); d.textStyles.append(t); }
@@ -1330,6 +1332,9 @@ Document Document::fromJson(const QJsonObject& o) {
     d.webPassword=o["webPw"].toString();
     d.fluidSite=o["fluid"].toBool(false);
     d.presentSteps=o["present"].toBool(false);
+    d.animLoops=qMax(0, o["aloops"].toInt(0));
+    for(auto v: o["ftags"].toArray()){ const QJsonObject t=v.toObject(); FrameTag ft; ft.name=t["name"].toString(); ft.from=qMax(0,t["from"].toInt()); ft.to=qMax(ft.from,t["to"].toInt()); ft.direction=qBound(0,t["dir"].toInt(),2);
+        const QColor tc(t["color"].toString()); if(tc.isValid()) ft.color=tc; d.frameTags.append(ft); }
     if(o.contains("webraw")){ auto r=o["webraw"].toObject(); d.webHeadHtml=r["head"].toString(); d.webBodyHtml=r["body"].toString(); }
     return d;
 }

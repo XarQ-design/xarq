@@ -5,6 +5,7 @@
 #include <QTreeWidget>
 
 class QLineEdit; class QListWidget; class QTableWidget; class QLabel; class QTimer;
+class QSpinBox; class QCheckBox; class QComboBox; class QToolButton; class QSlider; class QDoubleSpinBox;
 
 namespace xara {
 class Canvas;
@@ -123,14 +124,28 @@ private:
 };
 
 // Animation — frames are layers; play preview + animated-GIF export (manual p519-541).
+// The Animation panel: frames are layers. A strip of frames to pick, reorder, add, duplicate and delete, their
+// durations, playback (whole animation or a tagged range, forward / reverse / ping-pong, looping), onion skin,
+// layers shown behind every frame, named frame tags, and export (GIF, APNG, numbered PNGs, sprite sheet).
 class AnimationPanel : public QWidget {
     Q_OBJECT
 public:
     explicit AnimationPanel(Canvas* c, QWidget* parent=nullptr);
 private:
-    void play(); void stop(); void tick();
-    Canvas* m_c; QTimer* m_timer=nullptr; QLabel* m_info=nullptr;
-    int m_frame=0; bool m_playing=false; QVector<bool> m_savedVis;
+    void rebuild();                 // the frame, background and tag lists from the document
+    void renderThumbs();
+    void play(); void stop(); void step();
+    void syncControls();            // duration and background box for the selected frames
+    QVector<int> selectedFrames() const;
+    QVector<int> playSequence() const;
+    Canvas* m_c;
+    QListWidget* m_frames=nullptr; QListWidget* m_backs=nullptr; QListWidget* m_tags=nullptr;
+    QSpinBox* m_delay=nullptr; QSpinBox* m_loops=nullptr; QSpinBox* m_onionBefore=nullptr; QSpinBox* m_onionAfter=nullptr;
+    QSlider* m_onionOpacity=nullptr; QCheckBox* m_onion=nullptr; QCheckBox* m_transparent=nullptr;
+    QComboBox* m_range=nullptr; QComboBox* m_format=nullptr; QComboBox* m_tagDir=nullptr; QDoubleSpinBox* m_scale=nullptr;
+    QToolButton* m_playBtn=nullptr; QToolButton* m_loopBtn=nullptr; QLabel* m_info=nullptr;
+    QTimer* m_timer=nullptr; QTimer* m_thumbTimer=nullptr;
+    QVector<int> m_seq; int m_seqPos=0, m_restore=-1; bool m_playing=false, m_building=false;
 };
 
 } // namespace xara

@@ -333,21 +333,9 @@ bool Canvas::importAnimatedGif(const QString& path) {
             const int d=mov.nextFrameDelay(); perFrameMs.push_back(d>0?qMax(20,d):100); }
     }
     if(frames.size()<2) return importImage(path);              // still image / single frame
-    pushUndo("Import animated GIF");
-    const double W=frames[0].width(), H=frames[0].height();
-    const double maxW=m_doc.pageSize.width()*0.9, maxH=m_doc.pageSize.height()*0.9;
-    const double sc=qMin(1.0, qMin(maxW/W, maxH/H));
-    const QTransform place = QTransform::fromScale(sc,sc) * QTransform::fromTranslate((m_doc.pageSize.width()-W*sc)/2,(m_doc.pageSize.height()-H*sc)/2);
-    m_doc.layers.clear(); m_doc.shapes.clear();   // a GIF animation replaces the document — clear old artwork too, else it bleeds onto the frame-layers
-    const QString base=QFileInfo(path).completeBaseName();
-    for(int i=0;i<frames.size();++i){
-        Layer L; L.name=QString("%1 %2").arg(base).arg(i+1); L.visible=(i==0); L.frameDelayMs=(i<perFrameMs.size()?perFrameMs[i]:100); m_doc.layers.push_back(L);
-        Shape s; s.type=ShapeType::Rect; s.rect=QRectF(0,0,W,H); s.name=L.name; s.layer=i;
-        s.fill.type=FillType::Bitmap; s.fill.image=frames[i]; s.fill.origImage=frames[i]; s.fill.tiled=false;
-        s.fill.p0=QPointF(0,H); s.fill.p1=QPointF(W,H); s.fill.p2=QPointF(0,0);
-        s.stroke.enabled=false; s.transform=place; m_doc.shapes.push_back(s);
-    }
-    m_sel.clear(); emit documentChanged(); emit selectionChanged(); update();
+    QStringList names; for(int i=0;i<frames.size();++i) names<<QString("%1 %2").arg(QFileInfo(path).completeBaseName()).arg(i+1);
+    const bool small = frames[0].width()<=256 && frames[0].height()<=256;     // sprites and icons stay crisp when zoomed
+    adoptFrames(frames, perFrameMs, names, small, "Import animated GIF");
     return true;
 }
 
@@ -1476,15 +1464,16 @@ bool Canvas::exportGif(const QString& path, int delayMs, int loops) {
     const double sc=double(W)/b.width();
     QVector<QImage> frames; QVector<int> perFrameMs;
     QVector<bool> savedVis; for(auto& l:m_doc.layers) savedVis.push_back(l.visible);
-    const int nF=qMax(1, m_doc.layers.size());
+    const QVector<int> fr=m_doc.frameLayers();                 // layers marked as frame backgrounds show in every frame
+    const int nF=qMax(1, int(fr.size()));
     for(int fi=0;fi<nF;++fi){
-        if(m_doc.layers.size()>1) for(int k=0;k<m_doc.layers.size();++k) m_doc.layers[k].visible=(k==fi);
+        if(m_doc.layers.size()>1 && fi<fr.size()) for(int k=0;k<m_doc.layers.size();++k) if(!m_doc.layers[k].frameBackground) m_doc.layers[k].visible=(k==fr[fi]);
         QImage img(W,H,QImage::Format_ARGB32_Premultiplied); img.fill(Qt::white);
         QPainter g(&img); g.setRenderHint(QPainter::Antialiasing); g.setRenderHint(QPainter::SmoothPixmapTransform);
         g.scale(sc,sc); g.translate(-b.topLeft()); paintDocument(g,m_doc); g.end();
         frames.push_back(img);
         // per-frame timing: the layer's own delay overrides the default (0 => default)
-        const int d = (fi<m_doc.layers.size() && m_doc.layers[fi].frameDelayMs>0) ? m_doc.layers[fi].frameDelayMs : delayMs;
+        const int d = (fi<fr.size() && m_doc.layers[fr[fi]].frameDelayMs>0) ? m_doc.layers[fr[fi]].frameDelayMs : delayMs;
         perFrameMs.push_back(d);
     }
     for(int k=0;k<m_doc.layers.size();++k) m_doc.layers[k].visible=savedVis[k];
@@ -2345,21 +2334,8 @@ bool Canvas::importApng(const QString& path){
         else if(fr.dispose==2 && !prev.isNull()) canvas=prev;
     }
     if(outFrames.size()<2) return false;
-    pushUndo("Import APNG");
-    const double W=outFrames[0].width(), H=outFrames[0].height();
-    const double maxW=m_doc.pageSize.width()*0.9, maxH=m_doc.pageSize.height()*0.9;
-    const double sc=qMin(1.0, qMin(maxW/W, maxH/H));
-    const QTransform place=QTransform::fromScale(sc,sc)*QTransform::fromTranslate((m_doc.pageSize.width()-W*sc)/2,(m_doc.pageSize.height()-H*sc)/2);
-    m_doc.layers.clear(); m_doc.shapes.clear();
-    const QString base=QFileInfo(path).completeBaseName();
-    for(int i=0;i<outFrames.size();++i){
-        Layer L; L.name=QString("%1 %2").arg(base).arg(i+1); L.visible=(i==0); L.frameDelayMs=delays.value(i,100); m_doc.layers.push_back(L);
-        Shape s; s.type=ShapeType::Rect; s.rect=QRectF(0,0,W,H); s.name=L.name; s.layer=i;
-        s.fill.type=FillType::Bitmap; s.fill.image=outFrames[i]; s.fill.origImage=outFrames[i]; s.fill.tiled=false;
-        s.fill.p0=QPointF(0,H); s.fill.p1=QPointF(W,H); s.fill.p2=QPointF(0,0);
-        s.stroke.enabled=false; s.transform=place; m_doc.shapes.push_back(s);
-    }
-    m_sel.clear(); emit documentChanged(); emit selectionChanged(); update();
+    QStringList names; for(int i=0;i<outFrames.size();++i) names<<QString("%1 %2").arg(QFileInfo(path).completeBaseName()).arg(i+1);
+    adoptFrames(outFrames, delays, names, outFrames[0].width()<=256 && outFrames[0].height()<=256, "Import APNG");
     emit statusMessage(QString("Imported APNG: %1 frame(s).").arg(outFrames.size()));
     return true;
 }

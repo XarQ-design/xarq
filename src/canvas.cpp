@@ -4540,7 +4540,21 @@ void Canvas::paintBackdrop(QPainter& g) {
         // must NOT be transformed by any per-shape/group matrix. Export/thumbnail never sets it ⇒ byte-identical.
         setRenderViewport(QRectF(0, 0, width(), height()));
         setRenderSkipSet(m_dragProxySkip);     // non-empty only while building the static drag proxy (skip the movers)
-        if(hasTextFields()||hasTextChains()){ Document rd=resolvedForRender(); paintDocument(lp, rd); } else paintDocument(lp, m_doc);
+        {
+            Document rd; const bool resolved = hasTextFields() || hasTextChains();
+            if(resolved) rd = resolvedForRender();
+            const Document& src = resolved ? rd : m_doc;
+            const QVector<int> frames = src.frameLayers();
+            const int cur = (m_onionBefore > 0 || m_onionAfter > 0) && frames.size() > 1 ? currentFrame() : -1;
+            if(cur < 0) paintDocument(lp, src);
+            else {   // animation onion skin: neighbouring frames go just under the frame being edited
+                Document below = src, above = src;
+                for(int i = 0; i < src.layers.size(); ++i){ if(i >= frames[cur]) below.layers[i].visible = false; else above.layers[i].visible = false; }
+                paintDocument(lp, below);
+                paintOnionSkin(lp, layer.size(), dpr);
+                paintDocument(lp, above);
+            }
+        }
         setRenderSkipSet(QSet<const void*>());
         setRenderCullRect(QRectF());
         setRenderViewport(QRectF());
@@ -5198,3 +5212,4 @@ void Canvas::drawToolOverlay(QPainter& g) {
 #include "canvas_input.inc"
 #include "canvas_io.inc"
 #include "canvas_radial.inc"
+#include "canvas_anim.inc"

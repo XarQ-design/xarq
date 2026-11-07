@@ -488,6 +488,24 @@ public:
     void setScaleLineWidths(bool on){ m_doc.scaleLineWidths=on; }   // resize scales stroke width (Xara default ON)
     void moveSelectionToLayer(int i); void moveLayer(int i,int delta);   // delta +1 up / -1 down
     void soloLayer(int i);   // show only layer i (toggle: if already solo, show all)
+    // Animation (canvas_anim.inc): frames are the layers not marked as frame backgrounds (Document::frameLayers).
+    int    currentFrame() const;                          // the frame being shown and edited, -1 if none
+    void   showFrame(int f, bool quiet=false);            // show frame f with the backgrounds; quiet = playback (no undo, no signals)
+    int    insertFrame(int after, bool duplicate);        // a new frame after `after`, empty or a copy of it; returns its number
+    void   deleteFrames(QVector<int> frames);
+    void   moveFrame(int from, int to);
+    void   setFrameDelay(const QVector<int>& frames, int ms);
+    void   setFrameBackground(int layer, bool on);        // a layer shown behind every frame instead of being one
+    void   setFrameTags(const QVector<FrameTag>& tags);
+    void   setAnimationLoops(int loops);                  // 0 = forever
+    QImage renderFrame(int f, const QSize& box, bool white=false) const;   // a frame and its backgrounds, fitted into box (empty = 1:1)
+    void   setOnionSkin(int before, int after, double opacity);           // neighbouring frames shown faded; 0,0 = off
+    int    onionBefore() const { return m_onionBefore; }
+    int    onionAfter() const { return m_onionAfter; }
+    // Frames from..to (to=-1: last) at `scale` × the page: 0 GIF, 1 APNG, 2 numbered PNGs, 3 sprite sheet + JSON.
+    bool   exportAnimation(const QString& path, int format, double scale=1.0, int from=0, int to=-1, bool transparent=true);
+    // Replace the document with an imported animation: a frame per image on a page their size (names/delays per frame).
+    void   adoptFrames(const QVector<QImage>& frames, const QVector<int>& delays, const QStringList& names, bool pixelated, const QString& undoLabel);
     // Per-object edits used by the Page & Layer tree gallery.
     void setShapeVisible(int idx,bool v); void setShapeLocked(int idx,bool l); void renameShape(int idx,const QString& n);
     // Reorder/relayer the whole top-level shape list. `order` lists old shape indices in the NEW
@@ -802,6 +820,9 @@ private:
     };
     QImage      m_screenCache;              // cached backdrop+document at device pixels; reused across overlay-only frames
     DocCacheKey m_cacheKey;                 // view/mode key the cache was built for
+    int    m_onionBefore = 0, m_onionAfter = 0; double m_onionOpacity = 0.35;   // animation onion skin (view only)
+    void   paintOnionSkin(QPainter& lp, const QSize& devSize, qreal dpr);
+    void   permuteLayers(const QVector<int>& order);
     bool        m_cacheDirty = true;        // document content changed ⇒ the cache must be rebuilt
     bool        m_cullEnabled = true;       // skip rasterising shapes wholly outside the viewport (canvas only)
     DocCacheKey currentCacheKey() const;
