@@ -1,6 +1,6 @@
 # XarQ
 
-![CI](https://github.com/jonata/xarq/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/XarQ-design/xarq/actions/workflows/ci.yml/badge.svg)
 
 XarQ is a modern, self-contained vector-graphics, photo and web-design
 application — a Qt6 reimplementation and spiritual successor of Xara Xtreme /
@@ -16,7 +16,7 @@ there is **no wxWidgets dependency**.
 ## Download
 
 Alpha builds for Linux (AppImage) and Windows (installer or portable zip) are on the
-[Releases](https://github.com/jonata/xarq/releases) page.
+[Releases](https://github.com/XarQ-design/xarq/releases) page.
 
 ## Build & run
 

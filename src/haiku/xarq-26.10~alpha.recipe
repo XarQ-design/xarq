@@ -4,7 +4,7 @@ complete classic Xara tool set. It reads and writes native XAR documents and \
 imports a wide range of vector and raster formats, including SVG, CorelDRAW, \
 Affinity, Photoshop, Visio and Adobe XD. Use it to draw illustrations, logos and \
 page designs, edit bezier paths, or convert graphics between formats."
-HOMEPAGE="https://github.com/jonata/xarq"
+HOMEPAGE="https://github.com/XarQ-design/xarq"
 COPYRIGHT="1993-2006 Xara Group Ltd
 	2026 Jonatã Bolzan Loss"
 LICENSE="GNU GPL v2
@@ -13,7 +13,7 @@ LICENSE="GNU GPL v2
 REVISION="1"
 # Set both of these to the published commit being packaged.
 srcGitRev="0000000000000000000000000000000000000000"
-SOURCE_URI="https://github.com/jonata/xarq/archive/$srcGitRev.tar.gz"
+SOURCE_URI="https://github.com/XarQ-design/xarq/archive/$srcGitRev.tar.gz"
 CHECKSUM_SHA256="0000000000000000000000000000000000000000000000000000000000000000"
 SOURCE_FILENAME="xarq-$portVersion-$srcGitRev.tar.gz"
 SOURCE_DIR="xarq-$srcGitRev"

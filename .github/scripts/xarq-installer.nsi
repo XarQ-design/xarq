@@ -10,7 +10,7 @@ Unicode True
 ManifestDPIAware true
 
 !define APPNAME "XarQ"
-!define WEBSITE "https://github.com/jonata/xarq"
+!define WEBSITE "https://github.com/XarQ-design/xarq"
 !define UNINSTALL_KEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APPNAME}"
 !define CLASSES "Software\Classes"
 !define PROGID "XarQ.xar"

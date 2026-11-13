@@ -71,7 +71,7 @@ EOF
     cat <<EOF
 }
 urls			{
-	"https://github.com/jonata/xarq"
+	"https://github.com/XarQ-design/xarq"
 }
 EOF
 } > "$STAGE/.PackageInfo"
