@@ -304,9 +304,13 @@ endif()
 # AutoCAD DWG via LibreDWG — isolated to dwgvector.cpp. Link the shared lib and bake its directory into the
 # build RPATH so the runtime loader finds it when it lives outside the default search path (e.g. ~/.local/lib).
 if(LIBREDWG_INCLUDE_DIR AND LIBREDWG_LIBRARY)
+    # Leave out a system header folder (Haiku installs dwg.h there): repeating it with -I reorders the include
+    # path and breaks Qt's headers, as with OpenSlide below.
+    set(LIBREDWG_FILE_INCLUDES "${LIBREDWG_INCLUDE_DIR}")
+    list(REMOVE_ITEM LIBREDWG_FILE_INCLUDES ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})
     set_source_files_properties(dwgvector.cpp PROPERTIES
         COMPILE_DEFINITIONS "HAVE_LIBREDWG"
-        INCLUDE_DIRECTORIES "${LIBREDWG_INCLUDE_DIR}")
+        INCLUDE_DIRECTORIES "${LIBREDWG_FILE_INCLUDES}")
     target_link_libraries(xarq PRIVATE ${LIBREDWG_LIBRARY})
     get_filename_component(LIBREDWG_LIBDIR "${LIBREDWG_LIBRARY}" DIRECTORY)
     set_property(TARGET xarq APPEND PROPERTY BUILD_RPATH "${LIBREDWG_LIBDIR}")
