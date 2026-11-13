@@ -1,0 +1,74 @@
+name: Haiku repository
+
+# Rebuilds the package repository at https://xarq.org/haiku/<arch>/current from
+# every Haiku package (*-haiku-<arch>.hpkg) attached to a published release, and
+# copies it to the server. Haiku users add it once with
+#     pkgman add-repo https://xarq.org/haiku/x86_64/current
+# and then get XarQ and its updates through HaikuDepot.
+#
+# The .hpkg files are built on Haiku and attached by hand, which fires no event,
+# so this also runs daily and can be run from the Actions tab.
+#
+# Secrets: HAIKU_REPO_SSH_KEY (private key allowed to write the repository
+# folder), HAIKU_REPO_KNOWN_HOSTS (the server's line from ssh-keyscan), and
+# HAIKU_REPO_TARGET (user@host:path, e.g. xarquser@62.72.63.228:haiku/).
+
+on:
+  release:
+    types: [published, edited]
+  schedule:
+    - cron: '17 4 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: haiku-repo
+  cancel-in-progress: false
+
+jobs:
+  repository:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download the Haiku packages of every release
+        run: |
+          mkdir -p packages
+          gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --limit 100 \
+              --json tagName --jq '.[].tagName' |
+          while read -r tag; do
+            gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
+                --pattern '*-haiku-*.hpkg' --dir packages 2>/dev/null || true
+          done
+          ls -l packages
+
+      - name: Build the repository
+        env:
+          # Optional repository variable; the script defaults to "XarQ".
+          REPO_VENDOR: ${{ vars.HAIKU_REPO_VENDOR }}
+        run: .github/haiku-repo/build-repo.sh packages site
+
+      - name: Copy it to the server
+        env:
+          SSH_KEY: ${{ secrets.HAIKU_REPO_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.HAIKU_REPO_KNOWN_HOSTS }}
+          TARGET: ${{ secrets.HAIKU_REPO_TARGET }}
+        run: |
+          if [ -z "$SSH_KEY" ] || [ -z "$TARGET" ]; then
+            echo "::error::Set the HAIKU_REPO_SSH_KEY, HAIKU_REPO_KNOWN_HOSTS and HAIKU_REPO_TARGET secrets."
+            exit 1
+          fi
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/haiku_repo
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/haiku_repo
+          # The index goes last, so a client never reads a repo that lists
+          # packages not uploaded yet.
+          rsync -rtv --chmod=D755,F644 --exclude 'repo' --exclude 'repo.sha256' \
+              -e 'ssh -i ~/.ssh/haiku_repo -o IdentitiesOnly=yes' site/ "$TARGET"
+          rsync -rtv --delete --chmod=D755,F644 \
+              -e 'ssh -i ~/.ssh/haiku_repo -o IdentitiesOnly=yes' site/ "$TARGET"
