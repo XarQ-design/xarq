@@ -44,6 +44,18 @@ jobs:
             gh release download "$tag" --repo "$GITHUB_REPOSITORY" \
                 --pattern '*-haiku-*.hpkg' --dir packages 2>/dev/null || true
           done
+          # The libraries XarQ needs that HaikuPorts doesn't have live in the
+          # organization's haiku-<name> repositories, one release per build.
+          gh repo list "$GITHUB_REPOSITORY_OWNER" --limit 200 --no-archived \
+              --json name --jq '.[].name | select(startswith("haiku-"))' |
+          while read -r repo; do
+            gh release list --repo "$GITHUB_REPOSITORY_OWNER/$repo" --exclude-drafts \
+                --limit 100 --json tagName --jq '.[].tagName' |
+            while read -r tag; do
+              gh release download "$tag" --repo "$GITHUB_REPOSITORY_OWNER/$repo" \
+                  --pattern '*.hpkg' --dir packages --skip-existing 2>/dev/null || true
+            done
+          done
           ls -l packages
 
       - name: Build the repository
