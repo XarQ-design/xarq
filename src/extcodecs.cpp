@@ -140,6 +140,9 @@ struct Jxl {
         if(!lib) lib=dlopen("libjxl.so.0.8",RTLD_NOW|RTLD_LOCAL);
         if(!lib) lib=dlopen("libjxl.so.0.9",RTLD_NOW|RTLD_LOCAL);
         if(!lib) lib=dlopen("libjxl.so.0.10",RTLD_NOW|RTLD_LOCAL);
+        if(!lib) lib=dlopen("libjxl.so.0.11",RTLD_NOW|RTLD_LOCAL);
+        if(!lib) lib=dlopen("libjxl.so.0.12",RTLD_NOW|RTLD_LOCAL);
+        if(!lib) lib=dlopen("libjxl.so.0.13",RTLD_NOW|RTLD_LOCAL);
         if(!lib) lib=dlopen("libjxl.so",RTLD_NOW|RTLD_LOCAL);
         if(!lib) return;
         sig       =(int(*)(const u8*,size_t))     dlsym(lib,"JxlSignatureCheck");
