@@ -199,9 +199,9 @@ bool Canvas::adoptLayers(const Document& pd, const QString& path, const char* un
     const QString fileName=QFileInfo(path).fileName();
     const QString noteText=note.isEmpty()?QString():QStringLiteral(" %1.").arg(note);
     if(m_doc.shapes.isEmpty()){
-        m_doc.pageSize=pd.pageSize; m_doc.pageCount=1;
+        m_doc.pageSize=pd.pageSize; m_doc.pageCount=qMax(1,pd.pageCount);
         warnMissingFonts(pd.shapes);
-        if(pd.shapes.size()>1){ Shape g; g.type=ShapeType::Group; g.name=fileName; g.children=pd.shapes; addShapes({g}, undo); }
+        if(pd.shapes.size()>1 && pd.pageCount<=1){ Shape g; g.type=ShapeType::Group; g.name=fileName; g.children=pd.shapes; addShapes({g}, undo); }
         else addShapes(pd.shapes, undo);
         zoomFit();
         emit statusMessage(QStringLiteral("Imported %1.%2").arg(fileName,noteText));
@@ -1009,6 +1009,23 @@ bool Canvas::importSai(const QString& path){
     emit statusMessage("No readable layers found in the SAI file.");
     return false;
 }
+bool Canvas::importDwf(const QString& path){
+    QFile f(path); if(!f.open(QIODevice::ReadOnly)) return false; const QByteArray data=f.readAll(); f.close();
+    const int pk=data.left(64).indexOf("PK\x03\x04");                // a package (after its "(DWF V06.00)" header), or a bare stream
+    QMap<QString,QByteArray> zip;
+    if(pk>=0){ zip=readZipEntries(data); if(zip.isEmpty()) zip=readZipEntries(data.mid(pk)); }   // its offsets usually count the header
+    DwfImportStats st;
+    const Document pd=importDwfDocument(data,zip,&st);
+    QStringList notes;
+    if(st.pages>1) notes<<QStringLiteral("%1 sheets").arg(st.pages);
+    if(st.unknownOpcodes) notes<<QStringLiteral("a drawing stream stopped at an instruction XarQ doesn't know");
+    if(st.lzCompressed) notes<<QStringLiteral("parts packed with WHIP's old LZ compression were left out");
+    if(st.models3d) notes<<QStringLiteral("3D models (W3D) were left out");
+    if(adoptLayers(pd,path,"Import DWF",notes.join(QStringLiteral(", ")))) return true;
+    if(st.models3d || zip.keys().join(' ').contains(".w3d",Qt::CaseInsensitive)) emit statusMessage("This DWF holds a 3D model (W3D), which XarQ doesn't read.");
+    else emit statusMessage("No readable drawing found in the DWF file.");
+    return false;
+}
 bool Canvas::importPxd(const QString& path){
     QMap<QString,QByteArray> files;
     const QFileInfo info(path);
@@ -1089,9 +1106,10 @@ bool Canvas::importVml(const QString& path){
 }
 bool Canvas::importXps(const QString& path){
     QFile f(path); if(!f.open(QIODevice::ReadOnly)) return false; const QByteArray data=f.readAll(); f.close();
-    const QString svg=xara::xpsToSvg(data);
-    if(!svg.isEmpty() && importVectorSvgPages(QStringList{svg}, QStringLiteral("Import XPS"),
+    const QStringList pages=xara::xpsToSvgPages(data);   // every FixedPage, in reading order (DWFx sheets too)
+    if(!pages.isEmpty() && importVectorSvgPages(pages, QStringLiteral("Import XPS"),
                             QStringLiteral("Imported XPS page"), QStringLiteral("native"))) return true;
+    if(data.contains(".w3d")){ emit statusMessage("This DWFx holds a 3D model (W3D), which XarQ doesn't read; only 2D sheets come in."); return false; }
     emit statusMessage("No importable content found in the XPS file."); return false;
 }
 bool Canvas::importScribus(const QString& path){

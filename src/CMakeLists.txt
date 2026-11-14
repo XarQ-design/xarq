@@ -110,6 +110,7 @@ add_executable(xarq
     gputex.cpp
     textures.cpp
     ansiart.cpp
+    dwfimport.cpp
     xcfimport.cpp
     kraimport.cpp
     oraimport.cpp

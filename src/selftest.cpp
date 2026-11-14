@@ -13205,6 +13205,82 @@ if(xara::pdfVectorAvailable()){
       TextArt none; check(!decodeTextArt(QByteArray(),"ans",&none) && !decodeTextArt("XBIN\x1a\0\0","xb",&none), "Text art: empty and cut-short files give nothing");
     }
 
+    // --- DWF ---
+    std::printf("[interop] DWF\n");
+    {
+      auto le=[](QByteArray& b, qint64 v, int n){ for(int i=0;i<n;++i) b.append(char((v>>(8*i))&0xff)); };
+      auto pt32=[&](QByteArray& b, int x, int y){ le(b,x,4); le(b,y,4); };
+      const QByteArray dict=dwfZlibDictionary();
+      check(dict.size()==11476 && adler32(adler32(0,nullptr,0),(const Bytef*)dict.constData(),(uInt)dict.size())==0x5cbc15b9u, "DWF: the generated zlib dictionary is the one W2D streams name (Adler-32 5cbc15b9)");
+      // A binary stream: an RGBA colour, a polyline whose points are read x first, a palette colour, MTEXT,
+      // a preset-dictionary zlib block holding a circle, then a raw RGB image after it.
+      QByteArray w="(W2D V06.00)";
+      w.append('\x03'); w.append(char(10)); w.append(char(20)); w.append(char(30)); w.append(char(255));
+      w.append('p'); w.append(char(3)); pt32(w,0,0); pt32(w,1000,0); pt32(w,0,500);
+      w.append('c'); w.append(char(3));
+      w.append('x'); pt32(w,-1000,-500); w+="'{\\\\Lab\\\\Pcd}'";
+      QByteArray inner; inner.append('r'); pt32(inner,500,250); le(inner,100,4);
+      { z_stream z; memset(&z,0,sizeof z); deflateInit(&z,7); deflateSetDictionary(&z,(const Bytef*)dict.constData(),(uInt)dict.size());
+        QByteArray out(4096,'\0'); z.next_in=(Bytef*)inner.data(); z.avail_in=(uInt)inner.size(); z.next_out=(Bytef*)out.data(); z.avail_out=(uInt)out.size();
+        deflate(&z,Z_FINISH); out.resize(int(z.total_out)); deflateEnd(&z);
+        w.append('{'); le(w,0,4); le(w,0x11,2); w+=out; w.append('}'); }
+      { QByteArray im; le(im,6,2); le(im,2,2); le(im,1,2); pt32(im,0,0); pt32(im,20,10); le(im,1,4); le(im,6,4); im+=QByteArray("\xff\x00\x00\x00\x00\xff",6); im.append('}');
+        w.append('{'); le(w,im.size(),4); w+=im; }
+      DwfImportStats st; const Document d=importDwfDocument(w,{},&st);
+      check(d.pageCount==1 && qAbs(d.pageSize.width()-1600)<0.5 && qAbs(d.pageSize.height()-800)<0.5, "DWF: a bare stream on a page fitted to it, x before y");
+      const QVector<Shape> kids=d.shapes.isEmpty()? QVector<Shape>() : d.shapes[0].children;
+      bool rgba=false, text=false, circle=false, image=false;
+      for(const Shape& k : kids){
+        if(k.type==ShapeType::Path && k.stroke.enabled && k.stroke.color==QColor(10,20,30) && k.path.elementCount()==3) rgba=true;
+        if(k.type==ShapeType::Text && k.text=="ab\ncd" && k.fill.color==QColor(128,128,0)) text=true;
+        if(k.type==ShapeType::Path && k.path.elementCount()>16 && qAbs(k.path.boundingRect().width()-320)<4) circle=true;
+        if(k.type==ShapeType::Rect && k.fill.image.width()==2 && QColor(k.fill.image.pixel(0,0))==QColor(255,0,0) && QColor(k.fill.image.pixel(1,0))==QColor(0,0,255)) image=true;
+      }
+      check(rgba, "DWF: binary colours are RGBA in current streams");
+      check(text, "DWF: text with AutoCAD's MTEXT codes, coloured from the Windows default palette");
+      check(circle, "DWF: drawing inside a zlib block deflated against the preset dictionary");
+      check(image && st.images==1, "DWF: a raw RGB image between its corners");
+      // A DWF 6 package: the manifest's section, its descriptor's paper (10 x 5 in) and the stream's matrix
+      // onto it, with markup laid over the sheet; Windows path separators.
+      QMap<QString,QByteArray> zip;
+      zip.insert("manifest.xml","<dwf:Manifest xmlns:dwf='DWF-Manifest:6.0'><dwf:Sections><dwf:Section type='com.autodesk.dwf.ePlot' name='s1'/></dwf:Sections></dwf:Manifest>");
+      zip.insert("s1\\descriptor.xml","<ePlot:Page xmlns:ePlot='DWF-ePlot:1.2' name='Plan'><ePlot:Paper units='in' width='10' height='5' color='255 255 255'/><ePlot:Resources>"
+                 "<ePlot:GraphicResource role='2d streaming graphics' mime='application/x-w2d' href='s1\\a.w2d' transform='0.01 0 0 0 0 0.01 0 0 0 0 1 0 1 1 0 1'/>"
+                 "<ePlot:GraphicResource role='2d vector markup' mime='application/x-w2d' href='s1\\m.w2d' transform='0.01 0 0 0 0 0.01 0 0 0 0 1 0 0 0 0 1'/></ePlot:Resources></ePlot:Page>");
+      QByteArray a="(W2D V06.00)"; a.append('l'); pt32(a,0,0); pt32(a,100,0);
+      QByteArray m="(W2D V06.00)"; m.append('l'); pt32(m,0,0); pt32(m,0,100);
+      zip.insert("s1\\a.w2d",a); zip.insert("s1\\m.w2d",m);
+      const Document pk=importDwfDocument("(DWF V06.00)PK",zip);
+      bool onPaper=false, markup=false;
+      if(pk.pageCount==1 && !pk.shapes.isEmpty()) for(const Shape& k : pk.shapes[0].children){
+        if(k.type==ShapeType::Path && k.path.elementCount()==2 && QLineF(k.path.elementAt(0),k.path.elementAt(1))==QLineF(96,384,192,384)) onPaper=true;
+        if(k.type==ShapeType::Group && k.name=="Markup") markup=true;
+      }
+      check(qAbs(pk.pageSize.width()-960)<0.01 && qAbs(pk.pageSize.height()-480)<0.01 && pk.shapes.value(0).name=="Plan", "DWF: a package sheet on its paper, named after its page");
+      check(onPaper && markup, "DWF: a stream placed by its matrix, markup grouped over the sheet");
+      // An old ASCII stream: absolute coordinates and the AutoCAD colour index by default.
+      const Document old=importDwfDocument("(DWF V00.30)C 1 L 0,0 100,50 C 7 P 3 0,0 10,0 0,10",{});
+      bool aci=false; if(!old.shapes.isEmpty()) for(const Shape& k : old.shapes[0].children) if(k.stroke.enabled && k.stroke.color==QColor(255,0,0)) aci=true;
+      check(aci && old.shapes.value(0).children.size()==2, "DWF: ASCII streams and the AutoCAD colour index of old files");
+      check(importDwfDocument("(DWF V06.00)",{}).shapes.isEmpty() && importDwfDocument(QByteArray("(W2D V06.00)\xff\xfe",14),{}).shapes.isEmpty(), "DWF: empty and unknown streams give nothing");
+      // DWFx sheets are XPS pages: every page, in the order the document lists them (here 2 before 1).
+      auto storedZip=[&](const QList<QPair<QByteArray,QByteArray>>& files){
+        QByteArray z, cd; int count=0;
+        for(const auto& f : files){
+          const quint32 crc=(quint32)crc32(crc32(0,nullptr,0),(const Bytef*)f.second.constData(),(uInt)f.second.size()); const int at=z.size();
+          le(z,0x04034b50,4); le(z,20,2); le(z,0,2); le(z,0,2); le(z,0,4); le(z,crc,4); le(z,f.second.size(),4); le(z,f.second.size(),4); le(z,f.first.size(),2); le(z,0,2); z+=f.first; z+=f.second;
+          le(cd,0x02014b50,4); le(cd,20,2); le(cd,20,2); le(cd,0,2); le(cd,0,2); le(cd,0,4); le(cd,crc,4); le(cd,f.second.size(),4); le(cd,f.second.size(),4); le(cd,f.first.size(),2);
+          le(cd,0,2); le(cd,0,2); le(cd,0,2); le(cd,0,2); le(cd,0,4); le(cd,at,4); cd+=f.first; ++count; }
+        const int cdAt=z.size(); z+=cd; le(z,0x06054b50,4); le(z,0,2); le(z,0,2); le(z,count,2); le(z,count,2); le(z,cd.size(),4); le(z,cdAt,4); le(z,0,2);
+        return z; };
+      auto fpage=[](int w){ return QByteArray("<FixedPage xmlns='http://schemas.microsoft.com/xps/2005/06' Width='")+QByteArray::number(w)+"' Height='50'><Path Data='M 0,0 L 10,10' Stroke='#000000'/></FixedPage>"; };
+      const QByteArray xps=storedZip({{"FixedDocumentSequence.fdseq","<FixedDocumentSequence xmlns='http://schemas.microsoft.com/xps/2005/06'><DocumentReference Source='/Documents/1/FixedDocument.fdoc'/></FixedDocumentSequence>"},
+                                      {"Documents/1/FixedDocument.fdoc","<FixedDocument xmlns='http://schemas.microsoft.com/xps/2005/06'><PageContent Source='Pages/2.fpage'/><PageContent Source='Pages/1.fpage'/></FixedDocument>"},
+                                      {"Documents/1/Pages/1.fpage",fpage(100)}, {"Documents/1/Pages/2.fpage",fpage(200)}});
+      const QStringList xp=xara::xpsToSvgPages(xps);
+      check(xp.size()==2 && xp[0].contains("viewBox='0 0 200 50'") && xp[1].contains("viewBox='0 0 100 50'"), "DWFx: every XPS page, in the document's reading order");
+    }
+
     // --- GPU textures ---
     std::printf("[interop] GPU textures\n");
     {

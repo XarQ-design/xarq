@@ -3,6 +3,7 @@
 // which the caller feeds to XarQ's SVG parser (importVectorSvgPages) to get editable shapes.
 // Same bridge as cdrToSvgPages / wpgToSvgPages etc.
 #include <QString>
+#include <QStringList>
 #include <QByteArray>
 #include <cstdint>
 namespace xara {
@@ -19,7 +20,8 @@ QString sketchToSvg   (const uint8_t* p, int64_t n);    // Sketch (.sketch ZIP+J
 QString tgsToSvg      (const uint8_t* p, int64_t n);    // Telegram sticker (gzipped Lottie)
 QString topojsonToSvg (const uint8_t* p, int64_t n);    // TopoJSON (topology-encoded GeoJSON)
 QString vmlToSvg      (const uint8_t* p, int64_t n);    // VML (legacy MS vector markup)
-QString xpsToSvg      (const uint8_t* p, int64_t n);    // XPS / OpenXPS (OPC FixedPage)
+QString xpsToSvg      (const uint8_t* p, int64_t n);    // XPS / OpenXPS (OPC FixedPage): the first page
+QStringList xpsToSvgPages(const uint8_t* p, int64_t n);  // every page, in the documents' reading order (DWFx sheets too)
 QString scribusToSvg  (const uint8_t* p, int64_t n);    // Scribus (.sla/.scd DTP)
 // QByteArray convenience overloads
 inline QString shapefileToSvg(const QByteArray& b){ return shapefileToSvg(reinterpret_cast<const uint8_t*>(b.constData()), (int64_t)b.size()); }
@@ -36,5 +38,6 @@ inline QString tgsToSvg      (const QByteArray& b){ return tgsToSvg      (reinte
 inline QString topojsonToSvg (const QByteArray& b){ return topojsonToSvg (reinterpret_cast<const uint8_t*>(b.constData()), (int64_t)b.size()); }
 inline QString vmlToSvg      (const QByteArray& b){ return vmlToSvg      (reinterpret_cast<const uint8_t*>(b.constData()), (int64_t)b.size()); }
 inline QString xpsToSvg      (const QByteArray& b){ return xpsToSvg      (reinterpret_cast<const uint8_t*>(b.constData()), (int64_t)b.size()); }
+inline QStringList xpsToSvgPages(const QByteArray& b){ return xpsToSvgPages(reinterpret_cast<const uint8_t*>(b.constData()), (int64_t)b.size()); }
 inline QString scribusToSvg  (const QByteArray& b){ return scribusToSvg  (reinterpret_cast<const uint8_t*>(b.constData()), (int64_t)b.size()); }
 }

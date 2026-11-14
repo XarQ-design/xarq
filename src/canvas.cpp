@@ -1680,6 +1680,8 @@ bool Canvas::dropImportByExtension(const QString& p){
     if(ends(".sai"))  return importSai(p);
     if(ends(".ani"))  return importAni(p);
     if(ends(".aseprite")||ends(".ase")) return importAse(p);
+    if(ends(".dwf"))  return importDwf(p);
+    if(ends(".dwfx")) return importXps(p);
     if(ends(".ans")||ends(".asc")||ends(".nfo")||ends(".diz")||ends(".ice")||ends(".xb")||ends(".adf")||ends(".idf")||ends(".pcb")||ends(".tnd")) return importTextArt(p);
     if(ends(".bin")){ QFile f(p); if(f.open(QIODevice::ReadOnly) && f.size()<=(qint64(4)<<20)){ const QByteArray d=f.readAll();   // a raw text screen: SAUCE-tagged or whole 80-column rows
         if((d.size()>=128 && d.right(128).startsWith("SAUCE00")) || (d.size()>0 && d.size()%160==0)){ f.close(); return importTextArt(p); } } }

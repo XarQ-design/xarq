@@ -109,6 +109,13 @@ QByteArray saiEncryptPages(QVector<QByteArray> pages);   // for the self-test
 struct AseImportStats { int frames = 0, layers = 0, groups = 0, tilemaps = 0, linkedCels = 0, referenceLayers = 0, unknownModes = 0, badCels = 0; QString colorMode; };
 Document importAseDocument(const QByteArray& data, AseImportStats* stats = nullptr);
 
+// Autodesk DWF (W2D/WHIP! streams, bare or in a "(DWF V06.00)" package): a page per sheet, its lines, fills,
+// arcs, triangles, images and text, laid on each sheet's paper. `zip` is the package's entries (empty for a bare
+// stream).
+struct DwfImportStats { int pages = 0, objects = 0, texts = 0, images = 0, skipped = 0, unknownOpcodes = 0, lzCompressed = 0, models3d = 0; };
+Document importDwfDocument(const QByteArray& data, const QMap<QString, QByteArray>& zip, DwfImportStats* stats = nullptr);
+QByteArray dwfZlibDictionary();                                  // the preset dictionary of W2D's zlib blocks
+
 // Text-mode art (ANSI/ASCII .ans .asc .nfo .diz, .bin, XBin .xb, ArtWorx .adf, iCE Draw .idf, PCBoard .pcb,
 // TundraDraw .tnd) drawn with its font, as one picture; SAUCE metadata when the file has it.
 struct TextArt { QImage image; QString title, author, group; int columns = 0, rows = 0; };

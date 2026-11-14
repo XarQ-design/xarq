@@ -2878,19 +2878,47 @@ static void xpsBboxD(const QString& d, double& mnx,double& mny,double& mxx,doubl
     }
 }
 
+static QString xpsPageToSvg(const u8* p, i64 n, const QString& fpage);
+
+// The FixedPage parts in reading order: as the FixedDocuments list them (through the sequence), else as stored.
+static QStringList xpsPages(const u8* p, i64 n){
+    const QStringList names = xqUnzipList(p, n);
+    auto resolve = [&](const QString& base, QString src){
+        src.replace(QLatin1Char('\\'), QLatin1Char('/'));
+        QString full = src.startsWith(QLatin1Char('/')) ? src.mid(1) : (base.isEmpty() ? src : base + QLatin1Char('/') + src);
+        QStringList parts; for(const QString& seg : full.split(QLatin1Char('/'))){ if(seg == QLatin1String("..")){ if(!parts.isEmpty()) parts.removeLast(); } else if(!seg.isEmpty() && seg != QLatin1String(".")) parts << seg; }
+        full = parts.join(QLatin1Char('/'));
+        for(const QString& nm : names) if(nm.compare(full, Qt::CaseInsensitive) == 0) return nm;
+        return QString(); };
+    auto dirOf = [](const QString& part){ const int k = part.lastIndexOf(QLatin1Char('/')); return k < 0 ? QString() : part.left(k); };
+    auto sources = [&](const QString& part, const char* element){
+        QStringList out; QByteArray xml;
+        if(!xqUnzip(p, n, part, xml)) return out;
+        QXmlStreamReader xr(xml);
+        while(!xr.atEnd()) if(xr.readNext() == QXmlStreamReader::StartElement && xr.name() == QLatin1String(element)){
+            const QString r = resolve(dirOf(part), xr.attributes().value(QLatin1String("Source")).toString()); if(!r.isEmpty()) out << r; }
+        return out; };
+    QStringList pages;
+    for(const QString& nm : names) if(nm.endsWith(QLatin1String(".fdseq"), Qt::CaseInsensitive))
+        for(const QString& doc : sources(nm, "DocumentReference")) for(const QString& pg : sources(doc, "PageContent")) if(!pages.contains(pg) && pages.size() < 1000) pages << pg;
+    if(pages.isEmpty()) for(const QString& nm : names) if(nm.endsWith(QLatin1String(".fpage"), Qt::CaseInsensitive) && pages.size() < 1000) pages << nm;
+    return pages;
+}
+
 QString xpsToSvg(const u8* p, i64 n){
-    if(!p || n < 22) return QString();
-    if(p[0]!='P' || p[1]!='K') return QString();          // OPC package is a ZIP
+    if(!p || n < 22 || p[0]!='P' || p[1]!='K') return QString();      // OPC package is a ZIP
+    const QStringList pages = xpsPages(p, n);
+    return pages.isEmpty() ? QString() : xpsPageToSvg(p, n, pages.first());
+}
 
-    // Find the first FixedPage part "*.fpage".
-    QStringList names = xqUnzipList(p, n);
-    if(names.isEmpty()) return QString();
-    QString fpage;
-    for(const QString& nm : names){
-        if(nm.endsWith(QLatin1String(".fpage"), Qt::CaseInsensitive)){ fpage=nm; break; }
-    }
-    if(fpage.isEmpty()) return QString();
+QStringList xpsToSvgPages(const u8* p, i64 n){
+    QStringList out;
+    if(!p || n < 22 || p[0]!='P' || p[1]!='K') return out;
+    for(const QString& pg : xpsPages(p, n)){ const QString svg = xpsPageToSvg(p, n, pg); if(!svg.isEmpty()) out << svg; }
+    return out;
+}
 
+static QString xpsPageToSvg(const u8* p, i64 n, const QString& fpage){
     QByteArray xml;
     if(!xqUnzip(p, n, fpage, xml) || xml.isEmpty()) return QString();
     if(xml.size() > 128*1024*1024) return QString();
