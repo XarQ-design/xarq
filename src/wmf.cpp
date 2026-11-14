@@ -5,6 +5,9 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
+#ifdef _WIN32
+#include <QTemporaryFile>
+#endif
 extern "C" {
 #include <libwmf/api.h>
 #include <libwmf/svg.h>
@@ -13,14 +16,45 @@ extern "C" {
 namespace xara {
 bool wmfAvailable(){ return true; }
 
+// Where libwmf's SVG device writes. open_memstream keeps it in memory; Windows has no open_memstream, so
+// there it is a temporary file, read back and removed.
+#ifdef _WIN32
+struct SvgSink {
+    QTemporaryFile tmp; FILE* f=nullptr;
+    FILE* open(){
+        if(!tmp.open()) return nullptr;
+        const QString path=tmp.fileName(); tmp.close();      // the file stays until tmp goes away
+        f=_wfopen(reinterpret_cast<const wchar_t*>(path.utf16()), L"w+b"); return f;
+    }
+    QByteArray finish(){
+        if(!f) return {};
+        QByteArray out; char chunk[65536]; size_t n;
+        fflush(f); rewind(f);
+        while((n=fread(chunk,1,sizeof chunk,f))>0) out.append(chunk,(qsizetype)n);
+        fclose(f); f=nullptr; return out;
+    }
+    void discard(){ if(f){ fclose(f); f=nullptr; } }
+};
+#else
+struct SvgSink {
+    char* buf=nullptr; size_t size=0; FILE* f=nullptr;
+    FILE* open(){ f=open_memstream(&buf,&size); return f; }
+    QByteArray finish(){                                     // fclose flushes the stream into buf/size
+        if(!f) return {};
+        fclose(f); f=nullptr;
+        QByteArray out = (buf && size>0) ? QByteArray(buf,(qsizetype)size) : QByteArray();
+        std::free(buf); buf=nullptr; return out;
+    }
+    void discard(){ if(f){ fclose(f); f=nullptr; } std::free(buf); buf=nullptr; }
+};
+#endif
+
 QByteArray wmfToSvg(const QByteArray& data){
     if(data.isEmpty()) return {};
 
-    // libwmf's SVG device writes to a FILE*; open_memstream gives us a memory-backed FILE we can read back,
-    // so nothing touches the filesystem.
-    char* svgbuf = nullptr; size_t svgsize = 0;
-    FILE* memf = open_memstream(&svgbuf, &svgsize);
-    if(!memf){ std::free(svgbuf); return {}; }
+    SvgSink sink;
+    FILE* memf = sink.open();
+    if(!memf){ sink.discard(); return {}; }
 
     wmfAPI* API = nullptr;
     wmfAPI_Options opts; opts.function = wmf_svg_function;                 // route playback through the SVG device
@@ -28,7 +62,7 @@ QByteArray wmfToSvg(const QByteArray& data){
 
     auto bail = [&](wmfAPI* a, bool memOpen)->QByteArray{
         if(a){ if(memOpen) wmf_mem_close(a); wmf_api_destroy(a); }
-        fclose(memf); std::free(svgbuf); return {};
+        sink.discard(); return {};
     };
 
     if(wmf_api_create(&API, flags, &opts) != wmf_E_None) return bail(API, false);
@@ -53,11 +87,8 @@ QByteArray wmfToSvg(const QByteArray& data){
     const wmf_error_t perr = wmf_play(API, 0, &bbox);
     wmf_mem_close(API);
     wmf_api_destroy(API);
-    fclose(memf);                                                          // flush the memstream → svgbuf/svgsize
-
-    QByteArray out;
-    if(perr == wmf_E_None && svgbuf && svgsize > 0) out = QByteArray(svgbuf, (int)svgsize);
-    std::free(svgbuf);
+    QByteArray out = sink.finish();
+    if(perr != wmf_E_None) out.clear();
     return out;
 }
 }   // namespace xara

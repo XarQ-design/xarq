@@ -4641,8 +4641,8 @@ int runSelfTest() {
       sendMod(QEvent::MouseButtonRelease,dstV,Qt::LeftButton,Qt::NoButton,  Qt::NoModifier);
       QColor at=c->doc().shapes[0].fill.image.pixelColor(30,20);
       check(at.red()>170 && at.blue()<90, "cloned destination pixel now matches the red source");
-      QColor far=c->doc().shapes[0].fill.image.pixelColor(36,36);
-      check(far.blue()>170 && far.red()<90, "pixels outside the brush are untouched");
+      QColor outside=c->doc().shapes[0].fill.image.pixelColor(36,36);
+      check(outside.blue()>170 && outside.red()<90, "pixels outside the brush are untouched");
       // undo restores the pre-stroke image (fill.image is in the JSON snapshot); redo re-applies it
       c->undo();
       check(c->doc().shapes[0].fill.image.pixelColor(30,20).blue()>170, "undo restores the painted-over pixels");
@@ -10513,47 +10513,47 @@ check(RasterExtra::decodeData(QByteArray("P7 332\n4 4 255\n")+QByteArray(3,'\0')
         L adj=pix(0,0,0,0,0,0,0); adj.ch.clear(); adj.extra=block(key,body);
         const Document pd=importPsdDocument(psd(2,2,{pix(0,0,2,2,R,G,B),adj}));
         return pd.shapes.isEmpty()?QColor():QColor(pd.shapes[0].fill.image.pixel(0,0)); };
-    auto near=[](const QColor& a,const QColor& b,int t=2){ return qAbs(a.red()-b.red())<=t && qAbs(a.green()-b.green())<=t && qAbs(a.blue()-b.blue())<=t; };
+    auto similar=[](const QColor& a,const QColor& b,int t=2){ return qAbs(a.red()-b.red())<=t && qAbs(a.green()-b.green())<=t && qAbs(a.blue()-b.blue())<=t; };
 
     { // Channel mixer: red out of green, 50 % of blue into green. Five shorts per output: R, G, B, unused, constant.
       QByteArray b; be16(b,1); be16(b,0);
       for(int v: {0,100,0,0,0,  0,0,50,0,0,  0,0,100,0,0,  0,0,0,100,0}) be16(b,v);
-      check(near(adjusted(10,200,100,"mixr",b),QColor(200,50,100)), "PSD adjustments: channel mixer outputs");
+      check(similar(adjusted(10,200,100,"mixr",b),QColor(200,50,100)), "PSD adjustments: channel mixer outputs");
       QByteArray m; be16(m,1); be16(m,1);
       for(int v: {0,100,0,0,0,  0,0,0,0,0,  0,0,0,0,0,  0,0,0,0,0}) be16(m,v);
-      check(near(adjusted(10,200,100,"mixr",m),QColor(200,200,200)), "PSD adjustments: monochrome mixer uses one row for all"); }
+      check(similar(adjusted(10,200,100,"mixr",m),QColor(200,200,200)), "PSD adjustments: monochrome mixer uses one row for all"); }
 
     { // Selective colour, absolute: all the cyan it can add, on the reds only.
       QByteArray b; be16(b,1); be16(b,1);
       for(int rec=0;rec<10;++rec) for(int c=0;c<4;++c) be16(b,(rec==1&&c==0)?100:0);
       const QColor red=adjusted(255,0,0,"selc",b), green=adjusted(0,255,0,"selc",b);
-      check(near(red,QColor(0,0,0)), "PSD adjustments: selective colour moves its own family");
-      check(near(green,QColor(0,255,0)), "PSD adjustments: selective colour leaves other families"); }
+      check(similar(red,QColor(0,0,0)), "PSD adjustments: selective colour moves its own family");
+      check(similar(green,QColor(0,255,0)), "PSD adjustments: selective colour leaves other families"); }
 
     { // Gradient map: black to red, by luminance.
       QByteArray b; be16(b,1); b.append(char(0)); b.append(char(0)); be32(b,0); be16(b,2);
       auto stop=[&](int loc,int R,int G,int Bl){ be32(b,loc); be32(b,50); be16(b,0); be16(b,R); be16(b,G); be16(b,Bl); be16(b,0); be16(b,0); };
       stop(0,0,0,0); stop(4096,65535,0,0);
       be16(b,0); b.append(QByteArray(16,0));
-      check(near(adjusted(255,255,255,"grdm",b),QColor(255,0,0)) && near(adjusted(0,0,0,"grdm",b),QColor(0,0,0)), "PSD adjustments: gradient map follows luminance");
-      check(near(adjusted(128,128,128,"grdm",b),QColor(128,0,0),3), "PSD adjustments: gradient map interpolates"); }
+      check(similar(adjusted(255,255,255,"grdm",b),QColor(255,0,0)) && similar(adjusted(0,0,0,"grdm",b),QColor(0,0,0)), "PSD adjustments: gradient map follows luminance");
+      check(similar(adjusted(128,128,128,"grdm",b),QColor(128,0,0),3), "PSD adjustments: gradient map interpolates"); }
 
     { // A colour lookup table, as .cube text inside its descriptor: a 2-point cube that inverts.
       QByteArray cube="LUT_3D_SIZE 2\n1 1 1\n0 1 1\n1 0 1\n0 0 1\n1 1 0\n0 1 0\n1 0 0\n0 0 0\n";
       QByteArray b; be16(b,1); be32(b,16); be32(b,1); be16(b,0); be32(b,0); b+="null"; be32(b,1); be32(b,0); b+="LUT3DFileData"; b.remove(b.size()-13,13); b.chop(4);
       be32(b,13); b+="LUT3DFileData"; b+="tdta"; be32(b,cube.size()); b+=cube;
-      check(near(adjusted(10,200,100,"clrL",b),QColor(245,55,155)), "PSD adjustments: a .cube colour lookup applies"); }
+      check(similar(adjusted(10,200,100,"clrL",b),QColor(245,55,155)), "PSD adjustments: a .cube colour lookup applies"); }
 
     { // Hue/saturation: range lightness at +100 sends every channel to the pixel's maximum.
       QByteArray b; be16(b,2); be16(b,0); for(int i=0;i<6;++i) be16(b,0);
       for(int r=0;r<6;++r){ for(int v: {0,0,359,359}) be16(b,v); for(int v: {0,0,r==0?100:0}) be16(b,v); }
-      check(near(adjusted(200,100,50,"hue2",b),QColor(200,200,200)), "PSD adjustments: a range's lightness goes to the pixel's own maximum"); }
+      check(similar(adjusted(200,100,50,"hue2",b),QColor(200,200,200)), "PSD adjustments: a range's lightness goes to the pixel's own maximum"); }
 
     { // Curves run channel first, then composite: red 0-255 halved, composite inverted.
       QByteArray b; b.append(char(0)); be16(b,1); be32(b,3);
       be16(b,2); be16(b,255); be16(b,0); be16(b,0); be16(b,255);
       be16(b,2); be16(b,0); be16(b,0); be16(b,128); be16(b,255);
-      check(near(adjusted(255,0,0,"curv",b),QColor(127,255,255),2), "PSD adjustments: channel curves apply before the composite"); }
+      check(similar(adjusted(255,0,0,"curv",b),QColor(127,255,255),2), "PSD adjustments: channel curves apply before the composite"); }
 
     { // Knockout: deep punches through what's beneath, and a true background (no alpha channel) stays.
       L top=pix(0,0,2,2,0,0,255); { QByteArray v; v.append(char(2)); v.append(QByteArray(3,0)); top.extra=block("knko",v); }
