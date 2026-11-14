@@ -15,6 +15,15 @@
     <file>assets/logo/favicon.svg</file>
     <file>assets/logo/tabclose.svg</file>
     <file>assets/chrome/brand-tab.svg</file>
+    <file>assets/chrome/scrollbar-handle-vertical.svg</file>
+    <file>assets/chrome/scrollbar-handle-vertical-hover.svg</file>
+    <file>assets/chrome/scrollbar-handle-horizontal.svg</file>
+    <file>assets/chrome/scrollbar-handle-horizontal-hover.svg</file>
+    <file>assets/chrome/spinbox-triangle-up.svg</file>
+    <file>assets/chrome/spinbox-triangle-down.svg</file>
+    <file>assets/chrome/combobox-chevron.svg</file>
+    <file>assets/chrome/groupbox-background.svg</file>
+    <file>assets/chrome/groupbox-background-disabled.svg</file>
     <file>assets/chrome/check-disabled.svg</file>
     <file>assets/chrome/check-off-hover.svg</file>
     <file>assets/chrome/check-off.svg</file>
