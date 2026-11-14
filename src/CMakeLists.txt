@@ -114,6 +114,8 @@ add_executable(xarq
     drawingml.cpp
     swfimport.cpp
     cadimport.cpp
+    basis.cpp
+    crunch.cpp
     xcfimport.cpp
     kraimport.cpp
     oraimport.cpp

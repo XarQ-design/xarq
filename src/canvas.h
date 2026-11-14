@@ -382,6 +382,7 @@ public:
     bool importOfficeDrawing(const QString& path);                   // PowerPoint slides and Excel sheets' drawings (DrawingML)
     bool importSwf(const QString& path);                             // Adobe Flash movies: frames as animation frames
     bool importCad(const QString& path);                             // STEP / IGES through Open CASCADE
+    bool importBasis(const QString& path);                           // Basis Universal: a picture, or a video's frames
     bool importMpo(const QString& path);                             // multi-picture JPEG → a frame per picture (stereo wiggle)
     bool importPxd(const QString& path);                             // Pixelmator Pro → layers
     bool importClip(const QString& path);                            // Clip Studio Paint → layers

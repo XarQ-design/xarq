@@ -140,13 +140,20 @@ QImage decodeKtx2(const uchar* p, qint64 n, QString* note){
         unpacked.resize(int(full)); uLongf out = uLongf(full);
         if(uncompress(reinterpret_cast<Bytef*>(unpacked.data()), &out, data, uLong(len)) != Z_OK) return QImage();
         data = reinterpret_cast<const uchar*>(unpacked.constData()); size = qint64(out);
+    } else if(scheme == 1){                                                    // BasisLZ: ETC1S against the global codebooks
+        const quint64 gOff = le64(p + 64), gLen = le64(p + 72);
+        if(gOff > quint64(n) || gLen > quint64(n) - gOff) return QImage();
+        return decodeBasisLz(p + gOff, qint64(gLen), 0, data, size, int(w), int(h));
     } else if(scheme != 0){
-        if(note) *note = QStringLiteral("Basis Universal supercompression");
+        if(note) *note = QStringLiteral("an unknown supercompression");
         return QImage();
     }
     gputex::Format f; int bw, bh;
     if(blockFormat(vk, &f, &bw, &bh)) return gputex::decode(f, data, size, int(w), int(h), bw, bh);
-    if(vk == 0 && note) *note = QStringLiteral("Basis Universal (UASTC) data");
+    if(vk == 0){                                                               // UASTC: its colour model in the data format descriptor
+        const quint32 dfd = le32(p + 48);
+        if(quint64(dfd) + 13 <= quint64(n) && p[dfd + 12] == 166) return gputex::decode(gputex::Format::UASTC, data, size, int(w), int(h));
+    }
     return uncompressed(vk, data, size, int(w), int(h));
 }
 

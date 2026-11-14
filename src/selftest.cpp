@@ -13507,6 +13507,43 @@ if(xara::pdfVectorAvailable()){
       CadImportStats bad; check(importCadDocument(QStringLiteral("/nonexistent/none.igs"), &bad).shapes.isEmpty(), "STEP / IGES: a missing file gives nothing");
     }
 
+    // --- Basis Universal and Crunch ---
+    std::printf("[interop] Basis Universal and Crunch\n");
+    {
+      // UASTC blocks of fourteen of its modes, from real files, with four pixels (0, 5, 10, 15) as Basis Universal decodes them.
+      struct V { const char* hex; QRgb px[4]; };
+      const V vecs[] = {
+        {"a142aba579654996e2eff0fee1eff0fe", {0xffe26262, 0xffa32424, 0xffa32424, 0xffa32424}}, {"35024cd676e666e6c63cc33c03000000", {0xffb23333, 0xffb23333, 0xffb23333, 0xffb23333}},
+        {"138526c42780786bc964f93fef3a6f00", {0xffffe486, 0xffc5a447, 0xffc5a447, 0xffc5a447}}, {"0b01206a4a824282d2f3e3c0f1e30000", {0xffa32424, 0xffa22424, 0xffa22424, 0xffa22424}},
+        {"5b814ca75dab524ab5b11b1bb1b11b1b", {0xffa92a2a, 0xffa92a2a, 0xffa92a2a, 0xffa92a2a}}, {"170000e01f0000000000000000000000", {0xff000000, 0xff000000, 0xff000000, 0xff000000}},
+        {"4f218dd53031315dd3d2d20ee594f52a", {0x77999999, 0x7d888888, 0xc1939393, 0xd88e8e8e}}, {"02b842ade8e8e8bc21f910e700d500c4", {0x712b2b2b, 0x73353535, 0x7e5f5f5f, 0x91acacac}},
+        {"1cb159fe363737b74e6551aae7982760", {0x84868686, 0x84868686, 0x70939393, 0x84797979}}, {"666022bfe22ffee24ff6a86bb76eddfa", {0x649d9d9d, 0x42bcbcbc, 0x48b7b7b7, 0x3dc1c1c1}},
+        {"1f016085f7b7b7b7b7f77f2624a0a002", {0xffdedede, 0xffdedede, 0xffdedede, 0xffdedede}}, {"85fd5bc73fc0ff3f0006d7ffffffff1f", {0xffffffff, 0xff444444, 0xff000000, 0xff000000}},
+        {"1512a003e800fcff0b00fcffd3ffffff", {0xff3a3a3a, 0xff000000, 0xff000000, 0xff000000}}, {"e535ad6314e0ff1f0098999999999901", {0xffa3a3a3, 0xff000000, 0xff000000, 0xff000000}} };
+      QStringList wrong;
+      for(const V& v : vecs){ const QByteArray blk = QByteArray::fromHex(v.hex); QRgb out[16];
+        gputex::decodeBlock(gputex::Format::UASTC, reinterpret_cast<const uchar*>(blk.constData()), out);
+        for(int k = 0; k < 4; ++k) if(out[k * 5] != v.px[k]){ wrong << QString(v.hex).left(8); break; } }
+      check(wrong.isEmpty(), qPrintable("Basis: UASTC blocks of 14 modes match Basis Universal" + (wrong.isEmpty() ? QString() : " (not: " + wrong.join(",") + ")")));
+      // The same in a KTX 2.0 file: no Vulkan format, the data format descriptor's colour model says UASTC.
+      auto le32 = [](quint32 v){ QByteArray b(4, '\0'); for(int i = 0; i < 4; ++i) b[i] = char(v >> (8 * i)); return b; };
+      auto le64 = [&](quint64 v){ return le32(quint32(v)) + le32(quint32(v >> 32)); };
+      QByteArray dfd = le32(16) + le32(0) + le32(2 | 12 << 16); dfd.append(char(166)); dfd.append(QByteArray(3, '\0'));
+      const QByteArray block = QByteArray::fromHex(vecs[0].hex);
+      QByteArray k = QByteArray::fromHex("AB4B5458203230BB0D0A1A0A") + le32(0) + le32(1) + le32(4) + le32(4) + le32(0) + le32(0) + le32(1) + le32(1) + le32(0);
+      k += le32(104) + le32(dfd.size()) + le32(0) + le32(0) + le64(0) + le64(0) + le64(120) + le64(16) + le64(16) + dfd + block;
+      const QImage ku = RasterExtra::decodeData(k);
+      check(ku.size() == QSize(4, 4) && ku.pixel(1, 1) == 0xffa32424, "Basis: UASTC inside KTX2");
+      // A .basis of ETC1S (18 x 12, so a ragged edge), and a Crunch DXT5 file of the same picture.
+      const QImage eb = RasterExtra::decodeData(QByteArray::fromBase64("c0ITAE0AIf3dAAAAZsMBAAABAAAAEQAAAAAAAAAAAAAAAAAAAAAACQCDAAAAPQAACgDAAAAAKQAA6QAAADUAAABsAAAATQAAAB8AAABLVgEAAABDWw0FAAAAQmFzaXNVTGliVmVyczIuNTAAAAAAAAASAAwABQADAB4BAAAMAAAAKwcgwJMAAAAAIBQ2CAABIgcIAAAIAhUiogmEe9gBRAgQAAAAgHghBQGIACAAAAAIOdIs2TT8+fLWZSZEWZMAhP/////////7+f//BwDm/wdQVV1VVVVNVVVVVVVUVdWsqquqqqqqqgIAQZyAAQAAQFA0+7eRn40EYAoAAAAAEACSwwvwSEIAACBgnhCysXUDNQHABAAAAAAAAAIIAIvIxLkqA+I7fj9tAQ=="));
+      check(eb.size() == QSize(18, 12) && eb.pixel(0, 0) == 0xff513018 && eb.pixel(17, 11) == 0xffdb7826 && eb.pixel(9, 6) == 0xffdf743a,
+            "Basis: an ETC1S .basis file through its codebooks and Huffman-coded slice, as Basis Universal decodes it");
+      const QImage cr = RasterExtra::decodeData(QByteArray::fromBase64("SHgAStidAAABIxsRABIADAEBAgAAAAAAAAAAAAAAAAAAAABKAAA/AAsAAIkAADgADQAAwQAADAABAADNAAAMAAEAOgAA2QAAARMAgmxAgAAQAABOEonmDBgSAIEZQEAAGCAL5rct8Rp3KUU6HXjxLJlhvNcvZE/aD0dC/8Q5Cq2/n73QAClAz3QAxnAAQAwwwABKRv1plzqnmfsQoC0g87YPsYAqqqqquOOOM6z7nWdTbYXADvZkbxvf60IuEBErAAQCYIAAAAAAAB/+oAHGYIAAAAAAAB5QAAcGYIAAAAAAABrn//84ALmwAAAAAgQA7qGADZsAIAAAIIAPNxFAgAMwAAAAAAAACAAZgAAAAAAAAEAQ9XgHmI1BBCyAOAAocquA"));
+      check(cr.size() == QSize(18, 12) && cr.pixel(0, 0) == 0xff213c5a && cr.pixel(17, 11) == 0xffdc7828 && cr.pixel(9, 6) == 0xffde7929 && cr.pixel(4, 8) == 0xffde7529,
+            "Crunch: a DXT5 .crn file to the blocks crunch itself unpacks");
+      check(textures::decodeBasis(nullptr, 0).isEmpty() && textures::decodeCrn(reinterpret_cast<const uchar*>("Hx"), 2).isNull(), "Basis / Crunch: empty and cut-short files give nothing");
+    }
+
     // --- GPU textures ---
     std::printf("[interop] GPU textures\n");
     {
@@ -13555,8 +13592,9 @@ if(xara::pdfVectorAvailable()){
       const QByteArray rgba=QByteArray::fromHex("ff000080""00ff00ff""0000ffff""ffffff00");
       const QImage kz=RasterExtra::decodeData(ktx2(37,2,2,3,qCompress(rgba,9).mid(4),16));
       check(kz.size()==QSize(2,2) && kz.pixel(0,0)==qRgba(255,0,0,128) && kz.pixel(1,1)==qRgba(255,255,255,0), "GPU textures: KTX2 RGBA8, zlib-supercompressed");
-      QString why; check(textures::decodeKtx2(reinterpret_cast<const uchar*>(ktx2(0,4,4,1,QByteArray(16,'\0'),16).constData()),80+24+16,&why).isNull() && why.contains("Basis"),
-                         "GPU textures: Basis-compressed KTX2 is named as such");
+      QString why; check(textures::decodeKtx2(reinterpret_cast<const uchar*>(ktx2(0,4,4,5,QByteArray(16,'\0'),16).constData()),80+24+16,&why).isNull() && why.contains("supercompression")
+                         && textures::decodeKtx2(reinterpret_cast<const uchar*>(ktx2(0,4,4,1,QByteArray(16,'\0'),16).constData()),80+24+16).isNull(),
+                         "GPU textures: an unknown KTX2 supercompression is named; BasisLZ without its global data gives nothing");
       // DDS with a DX10 header (BC7) and KTX 1 with ETC1.
       QByteArray dds="DDS "+le32(124)+le32(0)+le32(4)+le32(4); dds.append(QByteArray(76-dds.size()+4,'\0'));
       dds.resize(76); dds+=le32(32)+le32(4)+QByteArray("DX10")+QByteArray(20,'\0')+QByteArray(20,'\0'); dds.resize(128);

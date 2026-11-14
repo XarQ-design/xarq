@@ -7891,6 +7891,8 @@ QImage decodeData(const QByteArray& data, const QString& extHint){
     if(n>=12 && p[0]==0xAB && p[1]=='K'&&p[2]=='T'&&p[3]=='X'&&p[4]==' '&&p[5]=='1'&&p[6]=='1'&&p[7]==0xBB) return decodeKtx(p,n);          // Khronos KTX1
     if(n>=12 && p[0]==0xAB && p[1]=='K'&&p[2]=='T'&&p[3]=='X'&&p[4]==' '&&p[5]=='2'&&p[6]=='0'&&p[7]==0xBB) return textures::decodeKtx2(p,n); // Khronos KTX 2.0
     if(n>=16 && !memcmp(p,"PKM ",4)) return textures::decodePkm(p,n);                                                                      // ETC .pkm
+    if(n>=74 && p[0]=='H' && p[1]=='x' && ((p[2]<<8)|p[3])>=74){ const QImage c=textures::decodeCrn(p,n); if(!c.isNull()) return c; }   // Crunch
+    if(n>=77 && p[0]=='s' && p[1]=='B' && p[4]>=77){ const QVector<QImage> v=textures::decodeBasis(p,n); if(!v.isEmpty()) return v.first(); }   // Basis Universal
     if(n>=16 && rd32le(p)==0x5CA1AB13u) return textures::decodeAstcFile(p,n);                                                               // ARM .astc
     if(rd32le(p)==0x03525650u || rd32le(p)==0x50565203u){ QImage r=decodePvr(p,n); if(!r.isNull()) return r; }                             // PowerVR v3
     if(n>=352 && (rd32le(p)==348||rd32be(p)==348) && (!memcmp(p+344,"n+1\0",4)||!memcmp(p+344,"ni1\0",4))) return decodeNifti(p,n); // NIfTI-1
@@ -7972,6 +7974,8 @@ QImage decodeData(const QByteArray& data, const QString& extHint){
     if(e=="ktx") return decodeKtx(p,n);
     if(e=="ktx2") return textures::decodeKtx2(p,n);
     if(e=="pkm") return textures::decodePkm(p,n);
+    if(e=="crn") return textures::decodeCrn(p,n);
+    if(e=="basis"){ const QVector<QImage> v=textures::decodeBasis(p,n); return v.isEmpty()? QImage() : v.first(); }
     if(e=="astc") return textures::decodeAstcFile(p,n);
     if(e=="pvr") return decodePvr(p,n);
     if(e=="wal") return decodeWal(p,n);
@@ -8019,7 +8023,7 @@ const QStringList& extensions(){
                                 "tru","sc5","rgb8","rgbn","spu","ic1","ic2","ic3",
                                 "mag","pi","cpc","sham","dmp",
                                 "flc","fli","mki","maki","bbc","map","ql",
-                                "blp","vtf","ktx","ktx2","pkm","astc","pvr","wal",
+                                "blp","vtf","ktx","ktx2","basis","crn","pkm","astc","pvr","wal",
                                 "nii","nrrd","mha","mgh","vtk",
                                 "cal","cals","ct1","mil",
                                 "avs","rgf","art","jng","cip","uil","brf","ubrl","isobrl","bie","jbg","jbig","pcd","pcds","hrz","g3","fax","afdesign","afphoto","afpub","aftemplate",

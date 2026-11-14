@@ -221,6 +221,19 @@ bool Canvas::importAni(const QString& path){
                        .arg(fs.author.isEmpty() ? QString() : QStringLiteral(" by ") + fs.author));
     return true;
 }
+bool Canvas::importBasis(const QString& path){
+    QFile f(path); if(!f.open(QIODevice::ReadOnly) || f.size() > (qint64(1) << 30)) return false;
+    const QByteArray data = f.readAll(); f.close();
+    QString note; int frameUs = 0;
+    const QVector<QImage> images = textures::decodeBasis(reinterpret_cast<const uchar*>(data.constData()), data.size(), &note, &frameUs);
+    if(images.isEmpty()){ emit statusMessage(note.isEmpty() ? QStringLiteral("No readable image found in the Basis Universal file.") : QStringLiteral("This file holds %1, which XarQ doesn't read.").arg(note)); return false; }
+    if(images.size() == 1) return importImage(path);
+    QVector<int> delays(images.size(), frameUs > 0 ? qBound(10, frameUs / 1000, 60000) : 100);
+    QStringList names; for(int i = 0; i < images.size(); ++i) names << QStringLiteral("Image %1").arg(i + 1);
+    adoptFrames(images, delays, names, false, "Import Basis Universal");
+    emit statusMessage(QStringLiteral("Imported %1 images, one per frame.").arg(images.size()));
+    return true;
+}
 bool Canvas::importMpo(const QString& path){
     QFile f(path); if(!f.open(QIODevice::ReadOnly)) return false;
     FrameSet fs;

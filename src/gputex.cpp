@@ -243,6 +243,7 @@ void eac(const uchar* s, int* v, bool elevenBit, bool sgn){
 }
 
 #include "astc.inc"
+#include "uastc.inc"
 
 } // namespace
 
@@ -273,6 +274,7 @@ bool decodeBlock(Format f, const uchar* s, QRgb* out, int bw, int bh){
     case Format::EAC_R11: case Format::EAC_R11S: eac(s, a, true, f == Format::EAC_R11S); for(int i = 0; i < 16; ++i) out[i] = qRgba(a[i], 0, 0, 255); return true;
     case Format::EAC_RG11: case Format::EAC_RG11S: eac(s, a, true, f == Format::EAC_RG11S); eac(s + 8, c, true, f == Format::EAC_RG11S); for(int i = 0; i < 16; ++i) out[i] = qRgba(a[i], c[i], 0, 255); return true;
     case Format::ASTC: return astcBlock(s, out, bw, bh);
+    case Format::UASTC: if(uastcBlock(s, out)) return true; for(int i = 0; i < 16; ++i) out[i] = qRgb(255, 0, 255); return false;
     }
     return false;
 }
