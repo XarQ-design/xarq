@@ -4,10 +4,15 @@
 // none are present (the text wrapper then just never hyphenates).
 #pragma once
 #include <QString>
+#include <QStringList>
 #include <QVector>
 #include <QHash>
 
 namespace xara {
+
+// The dictionaries packaged with the app (the AppImage's usr/share/xarq/dictionaries, the
+// Windows folder's dictionaries), looked in before the system's.
+QStringList bundledDictionaryDirs();
 
 class Hyphenator {
 public:

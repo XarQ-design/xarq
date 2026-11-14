@@ -1,4 +1,4 @@
-# Linked format libraries. GDAL is left out on purpose, as in apt-packages.txt.
+# Linked format libraries
 librevenge
 libcdr
 libwpg
@@ -16,6 +16,9 @@ zstd
 gdcm
 openslide
 graphviz
+gdal
+libwmf
+libiconv
 # Poppler's build (build-poppler.sh)
 freetype
 fontconfig

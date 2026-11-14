@@ -428,6 +428,47 @@ protected:
     std::function<void(const QString&)> m_open;
 };
 
+#ifdef Q_OS_HAIKU
+// Haiku's Command key (Alt on a PC keyboard) reaches Qt as Ctrl, and its Control key as Alt, so a menu would label
+// the shortcut you press as Alt+S "Ctrl+S". While a menu is open its shortcut column names the keys you press: a
+// tab in an action's text is the label Qt shows there. Closing the menu puts the text back.
+class HaikuShortcutLabels : public QObject {
+public:
+    using QObject::QObject;
+protected:
+    bool eventFilter(QObject* o, QEvent* e) override {
+        if((e->type()==QEvent::Show || e->type()==QEvent::Hide) && o->isWidgetType())
+            if(QMenu* menu=qobject_cast<QMenu*>(o)) relabel(menu, e->type()==QEvent::Show);
+        return QObject::eventFilter(o,e);
+    }
+private:
+    static QString label(const QKeySequence& seq){
+        const QKeyCombination none=QKeyCombination::fromCombined(0);
+        QKeyCombination keys[4]={none,none,none,none};
+        for(int i=0;i<seq.count() && i<4;++i){
+            const Qt::KeyboardModifiers m=seq[i].keyboardModifiers();
+            Qt::KeyboardModifiers swapped=m & ~(Qt::ControlModifier|Qt::AltModifier);
+            if(m & Qt::ControlModifier) swapped|=Qt::AltModifier;
+            if(m & Qt::AltModifier) swapped|=Qt::ControlModifier;
+            keys[i]=QKeyCombination(swapped, seq[i].key());
+        }
+        return QKeySequence(keys[0],keys[1],keys[2],keys[3]).toString(QKeySequence::NativeText);
+    }
+    static void relabel(QMenu* menu, bool open){
+        for(QAction* a : menu->actions()){
+            if(open){
+                if(a->shortcut().isEmpty() || a->text().contains(QLatin1Char('\t'))) continue;
+                a->setText(a->text()+QLatin1Char('\t')+label(a->shortcut()));
+                a->setProperty("xarqHaikuLabel", true);
+            } else if(a->property("xarqHaikuLabel").toBool()){
+                a->setProperty("xarqHaikuLabel", QVariant());
+                a->setText(a->text().section(QLatin1Char('\t'),0,0));
+            }
+        }
+    }
+};
+#endif
+
 int main(int argc, char** argv) {
 #ifdef Q_OS_HAIKU
     // Qt's raster fills hand spans to a thread pool and wait on a QSemaphore held on the stack. Without futexes
@@ -446,6 +487,9 @@ int main(int argc, char** argv) {
     app.installEventFilter(new xara::DialogChrome(&app));   // Subtitld's dialog chrome on every dialog
     app.installEventFilter(new RoundPopups(&app));   // translucent (rounded) menu + dropdown popups
     app.installEventFilter(new ShortcutGuard(&app)); // single-key tool shortcuts never steal a keystroke from a focused input
+#ifdef Q_OS_HAIKU
+    app.installEventFilter(new HaikuShortcutLabels(&app));   // menus name the keys pressed on Haiku
+#endif
 
     // Files named on the command line or sent by the desktop wait here until the window is up.
     QStringList pendingFiles;

@@ -41,6 +41,17 @@ pkg_check_modules(LIBMWAW       libmwaw-0.3       librevenge-0.0 librevenge-stre
 # Optional: JPEG XR / HD Photo (.jxr/.wdp/.hdp) via Microsoft's reference jxrlib (jxrglue). Install
 # libjxr-dev to enable; otherwise jxr.cpp compiles to a stub and the format is simply not offered.
 pkg_check_modules(LIBJXR libjxr)
+if(NOT LIBJXR_FOUND)
+    # MSYS2's jxrlib has the headers and libraries but no libjxr.pc.
+    find_path(LIBJXR_HEADER_DIR JXRGlue.h PATH_SUFFIXES jxrlib)
+    find_library(LIBJXR_JPEGXR jpegxr)
+    find_library(LIBJXR_GLUE jxrglue)
+    if(LIBJXR_HEADER_DIR AND LIBJXR_JPEGXR AND LIBJXR_GLUE)
+        set(LIBJXR_FOUND TRUE)
+        set(LIBJXR_INCLUDE_DIRS ${LIBJXR_HEADER_DIR})
+        set(LIBJXR_LIBRARIES ${LIBJXR_JPEGXR} ${LIBJXR_GLUE})
+    endif()
+endif()
 
 # Optional: Zstandard — Affinity container v11 (#FT4, Affinity 2.x) compresses doc.dat and its raster
 # tiles with zstd. Without it those files decline to the embedded preview; v9/v10 files are unaffected.

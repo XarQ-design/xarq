@@ -44,6 +44,9 @@ linuxdeploy --appdir AppDir --executable src/build/xarq \
     --desktop-file src/assets/xarq.desktop --icon-file "$tools/xarq.svg" \
     "${libs[@]}" --plugin qt
 
+# Hyphenation and spelling dictionaries, which XarQ looks for in usr/share/xarq/dictionaries first.
+bash "$(dirname "$0")/get-dictionaries.sh" AppDir/usr/share/xarq/dictionaries
+
 ARCH=x86_64 appimagetool --runtime-file "$tools/runtime" AppDir "XarQ-$version-x86_64.AppImage"
 ls -l "XarQ-$version-x86_64.AppImage"
 du -sh AppDir

@@ -1,5 +1,4 @@
-# What the AppImage builds with, on Ubuntu 24.04. GDAL is left out on purpose: it pulls in a large tree of
-# libraries, Ubuntu's own older Poppler among them.
+# What the AppImage builds with, on Ubuntu 24.04.
 # Build tools and required libraries
 cmake
 g++
@@ -38,6 +37,7 @@ libgdcm-dev
 libwmf-dev
 libopenslide-dev
 libgraphviz-dev
+libgdal-dev
 # Poppler's build
 libfreetype-dev
 libfontconfig-dev

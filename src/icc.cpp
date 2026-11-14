@@ -4,6 +4,7 @@
 // is false and callers use the naive prepress transforms instead.
 #include "icc.h"
 #include <QDir>
+#include <QFile>
 #include <QFileInfo>
 #include "dlcompat.h"
 
@@ -22,6 +23,7 @@ static const cmsU32 TYPE_CMYK_8 = (6u<<16)|(4u<<3)|1u;   // 0x60021 — 4 bytes 
 static const cmsU32 INTENT_PERCEPTUAL = 0u;
 
 typedef cmsHPROFILE (*fn_OpenFromFile)(const char*, const char*);
+typedef cmsHPROFILE (*fn_OpenFromMem)(const void*, cmsU32);
 typedef cmsHPROFILE (*fn_Create_sRGB)(void);
 typedef cmsHTRANSFORM (*fn_CreateTransform)(cmsHPROFILE, cmsU32, cmsHPROFILE, cmsU32, cmsU32, cmsU32);
 typedef void (*fn_DoTransform)(cmsHTRANSFORM, const void*, void*, cmsU32);
@@ -31,6 +33,7 @@ typedef void (*fn_DeleteTransform)(cmsHTRANSFORM);
 struct Icc::Impl {
     void* lib = nullptr;
     fn_OpenFromFile    OpenFromFile = nullptr;
+    fn_OpenFromMem     OpenFromMem  = nullptr;
     fn_Create_sRGB     Create_sRGB  = nullptr;
     fn_CreateTransform CreateTransform = nullptr;
     fn_DoTransform     DoTransform  = nullptr;
@@ -54,7 +57,12 @@ struct Icc::Impl {
         if(!loaded() || !srgb) return false;
         // Build into temporaries first — only tear down the CURRENT working transforms once the new
         // profile is fully ready, so a failed switch (corrupt/non-CMYK profile) keeps ICC alive.
-        cmsHPROFILE nc = OpenFromFile(path.toLocal8Bit().constData(), "r");
+        // A profile built into the app (":/…") is read from memory; lcms copies what it needs.
+        cmsHPROFILE nc = nullptr;
+        if(path.startsWith(QLatin1String(":/"))){
+            QFile f(path);
+            if(OpenFromMem && f.open(QIODevice::ReadOnly)){ const QByteArray bytes=f.readAll(); nc = OpenFromMem(bytes.constData(), cmsU32(bytes.size())); }
+        } else nc = OpenFromFile(path.toLocal8Bit().constData(), "r");
         if(!nc) return false;
         cmsHTRANSFORM tc = CreateTransform(srgb, TYPE_RGB_8, nc, TYPE_CMYK_8, intent, flags);
         cmsHTRANSFORM tr = CreateTransform(nc, TYPE_CMYK_8, srgb, TYPE_RGB_8, intent, flags);
@@ -82,6 +90,8 @@ static QStringList scanCmykProfiles(){
             if(head.size()>=20 && head.mid(16,4)=="CMYK") out << fi.absoluteFilePath();
         }
     }
+    // FOGRA39 (colord's, CC0) is built in, after the system's, so every system has a CMYK profile.
+    out << QStringLiteral(":/xarq/assets/icc/FOGRA39L_coated.icc");
     out.removeDuplicates(); return out;
 }
 
@@ -132,6 +142,7 @@ Icc::Icc() : d(new Impl) {
     if(!d->lib) d->lib = dlopen("liblcms2.so", RTLD_NOW|RTLD_LOCAL);
     if(d->lib){
         d->OpenFromFile    = (fn_OpenFromFile)   dlsym(d->lib, "cmsOpenProfileFromFile");
+        d->OpenFromMem     = (fn_OpenFromMem)    dlsym(d->lib, "cmsOpenProfileFromMem");
         d->Create_sRGB     = (fn_Create_sRGB)    dlsym(d->lib, "cmsCreate_sRGBProfile");
         d->CreateTransform = (fn_CreateTransform)dlsym(d->lib, "cmsCreateTransform");
         d->DoTransform     = (fn_DoTransform)    dlsym(d->lib, "cmsDoTransform");

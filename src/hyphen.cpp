@@ -2,13 +2,21 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QDir>
+#include <QCoreApplication>
 #include <QStringConverter>
 
 namespace xara {
 
+QStringList bundledDictionaryDirs() {
+    if (!QCoreApplication::instance()) return {};
+    const QString app = QCoreApplication::applicationDirPath();
+    return { app + "/dictionaries", app + "/../share/xarq/dictionaries" };
+}
+
 Hyphenator& Hyphenator::instance() { static Hyphenator h; return h; }
 
 Hyphenator::Hyphenator() {
+    for (const QString& d : bundledDictionaryDirs()) if (load(d + "/hyph_en_US.dic")) return;
     // Prefer English, then Portuguese, then any installed dictionary.
     const QStringList prefs = {
         "/usr/share/hyphen/hyph_en_US.dic", "/usr/share/hyphen/hyph_en_GB.dic", "/usr/share/hyphen/hyph_en.dic",

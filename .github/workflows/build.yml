@@ -64,10 +64,19 @@ jobs:
       - name: Build Poppler
         if: steps.poppler.outputs.cache-hit != 'true'
         run: bash .github/scripts/build-poppler.sh "$PWD/poppler-install"
-      - name: Find Poppler
+      - uses: actions/cache@v6
+        id: libredwg
+        with:
+          path: libredwg-install
+          key: libredwg-${{ runner.os }}-${{ hashFiles('.github/scripts/build-libredwg.sh') }}
+      - name: Build LibreDWG
+        if: steps.libredwg.outputs.cache-hit != 'true'
+        run: bash .github/scripts/build-libredwg.sh "$PWD/libredwg-install"
+      - name: Find Poppler and LibreDWG
         run: |
           echo "PKG_CONFIG_PATH=$PWD/poppler-install/lib/pkgconfig" >> "$GITHUB_ENV"
-          echo "LD_LIBRARY_PATH=$PWD/poppler-install/lib" >> "$GITHUB_ENV"
+          echo "LD_LIBRARY_PATH=$PWD/poppler-install/lib:$PWD/libredwg-install/lib" >> "$GITHUB_ENV"
+          echo "CMAKE_PREFIX_PATH=$PWD/libredwg-install" >> "$GITHUB_ENV"
       - name: Build XarQ
         working-directory: src
         run: |
@@ -121,6 +130,7 @@ jobs:
             mingw-w64-ucrt-x86_64-harfbuzz
             mingw-w64-ucrt-x86_64-nsis
             mingw-w64-ucrt-x86_64-ttf-dejavu
+            make
             wget
             xz
             zip
@@ -141,19 +151,38 @@ jobs:
         env:
           CMAKE_GENERATOR: Ninja
         run: bash .github/scripts/build-poppler.sh "$PWD/poppler-install"
-      - name: Find Poppler
-        # Its DLL among MSYS2's, where bundle-windows.sh gathers them from.
-        run: cp poppler-install/bin/*.dll /ucrt64/bin/
+      - uses: actions/cache@v6
+        id: libredwg
+        with:
+          path: libredwg-install
+          key: libredwg-${{ runner.os }}-${{ hashFiles('.github/scripts/build-libredwg.sh') }}
+      - name: Build LibreDWG
+        if: steps.libredwg.outputs.cache-hit != 'true'
+        run: bash .github/scripts/build-libredwg.sh "$PWD/libredwg-install"
+      - uses: actions/cache@v6
+        id: libmobi
+        with:
+          path: libmobi-install
+          key: libmobi-${{ runner.os }}-${{ hashFiles('.github/scripts/build-libmobi.sh') }}
+      - name: Build libmobi
+        if: steps.libmobi.outputs.cache-hit != 'true'
+        run: bash .github/scripts/build-libmobi.sh "$PWD/libmobi-install"
+      - name: Find Poppler, LibreDWG and libmobi
+        # Their DLLs among MSYS2's, where bundle-windows.sh gathers them from.
+        run: cp poppler-install/bin/*.dll libredwg-install/bin/*.dll libmobi-install/bin/*.dll /ucrt64/bin/
       - name: Build XarQ
         working-directory: src
         # MSYS2's login shell sets PKG_CONFIG_PATH itself, so it can't come from the job's environment.
         run: |
           export PKG_CONFIG_PATH="$PWD/../poppler-install/lib/pkgconfig:$PKG_CONFIG_PATH"
-          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DXARQ_VERSION="$VERSION" | tee ../configure.log
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DXARQ_VERSION="$VERSION" \
+            -DCMAKE_PREFIX_PATH="$(cygpath -m "$PWD/../libredwg-install")" | tee ../configure.log
           grep -E 'ENABLED|disabled' ../configure.log || true
           cmake --build build -- -k 0
       - name: Gather the app's folder
-        run: bash .github/scripts/bundle-windows.sh src/build/xarq.exe dist/XarQ
+        run: |
+          bash .github/scripts/bundle-windows.sh src/build/xarq.exe dist/XarQ
+          bash .github/scripts/get-dictionaries.sh dist/XarQ/dictionaries
       - name: Self-test
         run: bash .github/scripts/selftest-windows.sh dist/XarQ
       - name: Start it
