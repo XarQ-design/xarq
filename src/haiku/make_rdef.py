@@ -8,7 +8,7 @@ so this encodes assets/logo/xarq-appicon.svg by hand on the 64-unit HVIF grid. R
 import os
 import struct
 
-VERSION = (26, 10, 0)
+VERSION = (26, 11, 0)
 SIGNATURE = "application/x-vnd.XarQ"
 XAR_TYPE = "application/x-vnd.xara-xar"
 

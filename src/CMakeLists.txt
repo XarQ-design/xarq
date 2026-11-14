@@ -10,7 +10,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 # The version the app shows. The release builds pass the tag's (without the leading "v").
-set(XARQ_VERSION "26.10-alpha" CACHE STRING "Version shown by the app")
+set(XARQ_VERSION "26.11-alpha" CACHE STRING "Version shown by the app")
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Svg PrintSupport)
 find_package(ZLIB REQUIRED)

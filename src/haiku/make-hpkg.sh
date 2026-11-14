@@ -7,7 +7,7 @@ set -e
 HERE=$(cd "$(dirname "$0")" && pwd)
 BUILD=${1:-$HERE/../build}
 OUT=${2:-$PWD}
-VERSION=26.10~alpha
+VERSION=26.11~alpha
 REVISION=1
 ARCH=$(getarch)
 STAGE=$(mktemp -d /tmp/xarq-hpkg.XXXXXX)

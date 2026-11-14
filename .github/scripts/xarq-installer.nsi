@@ -1,6 +1,6 @@
 ; XarQ's Windows installer (NSIS, Modern UI 2).
 ;
-;   makensis -DVERSION=26.10-alpha -DSOURCE=dist\XarQ -DOUTFILE=XarQ-26.10-alpha-Setup.exe xarq-installer.nsi
+;   makensis -DVERSION=26.11-alpha -DSOURCE=dist\XarQ -DOUTFILE=XarQ-26.11-alpha-Setup.exe xarq-installer.nsi
 ;
 ; Installs just for the current user, with no administrator rights, always in %LOCALAPPDATA%\Programs\XarQ:
 ; the folder is emptied on install and removed on uninstall, so it can't be one the user picked. .xar, XarQ's
