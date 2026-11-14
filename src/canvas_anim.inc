@@ -274,6 +274,22 @@ bool Canvas::importAse(const QString& path){
     return true;
 }
 
+bool Canvas::importSwf(const QString& path){
+    QFile f(path); if(!f.open(QIODevice::ReadOnly) || f.size() > (qint64(512) << 20)) return false;
+    SwfImportStats st;
+    const Document pd = importSwfDocument(f.readAll(), &st);
+    if(pd.shapes.isEmpty()){ emit statusMessage(st.lzma ? "This Flash movie is LZMA-compressed, which this build of XarQ can't read." : "No readable frames found in the Flash movie."); return false; }
+    QStringList notes;
+    if(st.missingBitmaps) notes << QStringLiteral("%1 bitmap(s) couldn't be read").arg(st.missingBitmaps);
+    if(st.frames > 1){
+        adoptAnimation(pd, "Import Flash");
+        emit statusMessage(QStringLiteral("Imported Flash (SWF %1): %2 frame(s) at %3 fps%4.").arg(st.version).arg(st.frames).arg(st.frameRate, 0, 'g', 3)
+                           .arg(notes.isEmpty() ? QString() : QStringLiteral(" — ") + notes.join(QStringLiteral(", "))));
+        return true;
+    }
+    return adoptLayers(pd, path, "Import Flash", notes.join(QStringLiteral(", ")));
+}
+
 bool Canvas::importTextArt(const QString& path){
     QFile f(path); if(!f.open(QIODevice::ReadOnly) || f.size() > (qint64(64) << 20)) return false;
     TextArt art;

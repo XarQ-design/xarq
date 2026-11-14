@@ -13408,6 +13408,85 @@ if(xara::pdfVectorAvailable()){
       check(em.shapes.size()==1 && em.shapes[0].path.boundingRect().toRect()==QRect(0,0,30,30), "EMF: poly-polygons, as Office pictures use them");
     }
 
+    // --- Flash SWF ---
+    std::printf("[interop] Flash SWF\n");
+    {
+      // A bit writer for building movies: SWF packs rectangles, matrices and shape records bit by bit.
+      struct BW { QByteArray b; quint32 acc = 0; int nbits = 0;
+        void ub(quint32 v, int n){ for(int i = n - 1; i >= 0; --i){ acc = (acc << 1) | ((v >> i) & 1); if(++nbits == 8){ b.append(char(acc)); acc = 0; nbits = 0; } } }
+        void sb(qint32 v, int n){ ub(quint32(v) & (n >= 32 ? 0xffffffffu : ((1u << n) - 1)), n); }
+        void align(){ if(nbits) ub(0, 8 - nbits); }
+        void u8(int v){ align(); b.append(char(v)); } void u16(int v){ u8(v & 0xff); u8((v >> 8) & 0xff); } void u32(quint32 v){ u16(int(v & 0xffff)); u16(int(v >> 16)); }
+        void rect(int x0, int x1, int y0, int y1){ align(); ub(16, 5); sb(x0, 16); sb(x1, 16); sb(y0, 16); sb(y1, 16); align(); }
+        void translate(int x, int y){ align(); ub(0, 1); ub(0, 1); ub(16, 5); sb(x, 16); sb(y, 16); align(); } };
+      auto tag = [](BW& w, int code, const QByteArray& body){ if(body.size() < 63) w.u16((code << 6) | body.size()); else { w.u16((code << 6) | 63); w.u32(quint32(body.size())); } w.b += body; };
+      // A square 0..2000 twips (100 px), filled `rgb`, outlined black 20 twips wide.
+      auto square = [&](int id, QRgb rgb){
+        BW t; t.u16(id); t.rect(0, 2000, 0, 2000);
+        t.u8(1); t.u8(0); t.u8(qRed(rgb)); t.u8(qGreen(rgb)); t.u8(qBlue(rgb));          // one solid fill
+        t.u8(1); t.u16(20); t.u8(0); t.u8(0); t.u8(0);                                // one line
+        t.align(); t.ub(1, 4); t.ub(1, 4);                                           // style index bits
+        t.ub(0, 1); t.ub(0x0F, 5); t.ub(1, 5); t.sb(0, 1); t.sb(0, 1); t.ub(0, 1); t.ub(1, 1); t.ub(1, 1);   // move to 0,0; fill1 = 1, line = 1
+        auto line = [&](int dx, int dy){ t.ub(1, 1); t.ub(1, 1); t.ub(13 - 2, 4); if(dx && dy){ t.ub(1, 1); t.sb(dx, 13); t.sb(dy, 13); } else { t.ub(0, 1); t.ub(dy ? 1 : 0, 1); t.sb(dx ? dx : dy, 13); } };
+        line(2000, 0); line(0, 2000); line(-2000, 0); line(0, -2000);
+        t.ub(0, 1); t.ub(0, 5); t.align();
+        return t.b; };
+      auto placeNew = [&](BW& w, int depth, int id, int x, int y){ BW t; t.u8(0x02 | 0x04); t.u16(depth); t.u16(id); t.translate(x, y); tag(w, 26, t.b); };
+      auto move = [&](BW& w, int depth, int x, int y){ BW t; t.u8(0x01 | 0x04); t.u16(depth); t.translate(x, y); tag(w, 26, t.b); };
+      auto frame = [&](BW& w){ tag(w, 1, QByteArray()); };
+      auto movie = [&](const QByteArray& body){ BW h; h.rect(0, 8000, 0, 4000); h.u16(12 << 8); h.u16(3); QByteArray f = "FWS"; f.append(char(10)); quint32 len = quint32(8 + h.b.size() + body.size());
+        for(int i = 0; i < 4; ++i) f.append(char((len >> (8 * i)) & 0xff)); return f + h.b + body; };
+      // Three frames: a red square placed, moved 100 px right (frame label "walk"), then removed; a blue square stays.
+      BW w;
+      { BW bg; bg.u8(10); bg.u8(20); bg.u8(30); tag(w, 9, bg.b); }
+      tag(w, 2, square(1, qRgb(255, 0, 0))); tag(w, 2, square(2, qRgb(0, 0, 255)));
+      placeNew(w, 1, 1, 0, 0); placeNew(w, 2, 2, 4000, 2000); frame(w);
+      move(w, 1, 2000, 0); { BW l; l.b = "walk"; l.b.append('\0'); tag(w, 43, l.b); } frame(w);
+      { BW r; r.u16(1); tag(w, 28, r.b); } frame(w);
+      tag(w, 0, QByteArray());
+      SwfImportStats ss; const Document md = importSwfDocument(movie(w.b), &ss);
+      auto onLayer = [&](int layer, const QColor& c) -> QRectF { for(const Shape& x : md.shapes) if(x.layer == layer && x.type == ShapeType::Path && x.fill.color == c) return x.path.boundingRect(); return QRectF(); };
+      check(ss.frames == 3 && md.layers.size() == 4 && md.layers[0].frameBackground && md.layers[1].frameDelayMs == 83 && md.pageSize == QSizeF(400, 200),
+            "SWF: three frames as animation frames at the movie's rate, on a 400 x 200 stage, its colour behind them");
+      check(onLayer(1, QColor(255, 0, 0)) == QRectF(0, 0, 100, 100) && onLayer(2, QColor(255, 0, 0)) == QRectF(100, 0, 100, 100) && onLayer(3, QColor(255, 0, 0)).isNull(),
+            "SWF: the display list places, moves and removes characters frame by frame");
+      check(onLayer(3, QColor(0, 0, 255)) == QRectF(200, 100, 100, 100) && md.frameTags.size() == 1 && md.frameTags[0].name == "walk" && md.frameTags[0].from == 1,
+            "SWF: characters stay put until moved; frame labels become tags");
+      bool bg = false, outline = false;
+      for(const Shape& x : md.shapes){ if(x.layer == 0 && x.fill.color == QColor(10, 20, 30)) bg = true; if(x.layer == 1 && x.stroke.enabled && qAbs(x.stroke.width - 1) < 1e-9 && x.stroke.color == QColor(0, 0, 0)) outline = true; }
+      check(bg && outline, "SWF: the stage colour, and lines at their width in twips");
+      // One frame with a sprite (two frames of its own), a mask and a colour transform; zlib compressed.
+      BW s;
+      tag(s, 2, square(1, qRgb(255, 0, 0)));
+      { BW sp; sp.u16(3); sp.u16(2); placeNew(sp, 1, 1, 0, 0); frame(sp); move(sp, 1, 2000, 0); frame(sp); tag(sp, 0, QByteArray()); tag(s, 39, sp.b); }
+      placeNew(s, 1, 3, 0, 0);
+      { BW t; t.u8(0x02 | 0x04 | 0x40); t.u16(2); t.u16(1); t.translate(0, 0); t.u16(3); tag(s, 26, t.b); }            // mask at depth 2 over depth 3
+      { BW t; t.u8(0x02 | 0x04 | 0x08); t.u16(3); t.u16(1); t.translate(1000, 1000); t.align(); t.ub(1, 1); t.ub(1, 1); t.ub(10, 4); t.sb(0, 10); t.sb(0, 10); t.sb(0, 10); t.sb(128, 10); t.sb(0, 10); t.sb(255, 10); t.sb(0, 10); t.sb(0, 10); t.align(); tag(s, 26, t.b); }   // times (0,0,0,½) plus (0,255,0,0)
+      frame(s); tag(s, 0, QByteArray());
+      QByteArray plain = movie(s.b), packed = plain.left(8);
+      { uLongf n = compressBound(uLong(plain.size())); QByteArray z(int(n), '\0'); compress2(reinterpret_cast<Bytef*>(z.data()), &n, reinterpret_cast<const Bytef*>(plain.constData()) + 8, uLong(plain.size() - 8), 9); z.resize(int(n)); packed += z; packed[0] = 'C'; }
+      SwfImportStats cs; const Document sd = importSwfDocument(packed, &cs);
+      bool sprite = false, masked = false, tinted = false;
+      std::function<void(const QVector<Shape>&)> scan = [&](const QVector<Shape>& v){ for(const Shape& x : v){
+        if(x.type == ShapeType::Group){ if(x.isClipView && x.clipSplit == 1 && x.children[0].fill.type == FillType::None) masked = true; scan(x.children); continue; }
+        if(x.type == ShapeType::Path && x.fill.color == QColor(255, 0, 0) && x.path.boundingRect() == QRectF(0, 0, 100, 100)) sprite = true;
+        if(x.type == ShapeType::Path && x.fill.color == QColor(0, 255, 0, 128)) tinted = true; } };
+      scan(sd.shapes);
+      check(cs.frames == 1 && sd.layers.size() <= 1 && sprite, "SWF: a one-frame movie is a drawing; zlib compression; a sprite shows its first frame");
+      check(masked && tinted, "SWF: clip layers mask the depths above them unseen; colour transforms recolour fills");
+      // A lossless (8-bit palette) bitmap, as a picture and as a shape's fill.
+      { BW b; QByteArray raw; raw.append(char(255)); raw.append(char(0)); raw.append(char(0)); raw.append(char(0)); raw.append(char(0)); raw.append(char(255));   // two colours
+        for(int y = 0; y < 2; ++y){ raw.append(char(0)); raw.append(char(1)); raw.append(char(0)); raw.append(char(0)); }                                       // 2 px rows padded to 4
+        uLongf n = compressBound(uLong(raw.size())); QByteArray z(int(n), '\0'); compress2(reinterpret_cast<Bytef*>(z.data()), &n, reinterpret_cast<const Bytef*>(raw.constData()), uLong(raw.size()), 9); z.resize(int(n));
+        BW t; t.u16(5); t.u8(3); t.u16(2); t.u16(2); t.u8(1); t.b += z; tag(b, 20, t.b);
+        { BW p; p.u8(0x02 | 0x04); p.u16(1); p.u16(5); p.align(); p.ub(1, 1); p.ub(22, 5); p.sb(20 << 16, 22); p.sb(20 << 16, 22); p.ub(0, 1); p.ub(0, 5); p.align(); tag(b, 26, p.b); }
+        frame(b); tag(b, 0, QByteArray());
+        const Document bd = importSwfDocument(movie(b.b));
+        bool pic = false; for(const Shape& x : bd.shapes) if(x.type == ShapeType::Rect && x.fill.type == FillType::Bitmap && x.fill.image.size() == QSize(2, 2)) pic = QColor(x.fill.image.pixel(0, 0)) == QColor(255, 0, 0) && QColor(x.fill.image.pixel(1, 1)) == QColor(0, 0, 255) && x.transform.mapRect(x.rect).toRect() == QRect(0, 0, 40, 40);
+        check(pic, "SWF: a lossless palette bitmap, placed at its scale"); }
+      check(importSwfDocument("FWS").shapes.isEmpty() && importSwfDocument(QByteArray("CWS\x0a\x40\x00\x00\x00garbage", 15)).shapes.isEmpty(), "SWF: cut-short and broken movies give nothing");
+    }
+
     // --- GPU textures ---
     std::printf("[interop] GPU textures\n");
     {

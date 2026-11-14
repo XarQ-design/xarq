@@ -380,6 +380,7 @@ public:
     bool importTextArt(const QString& path);                         // ANSI / ASCII art and its relatives, as a picture
     bool importDwf(const QString& path);                             // Autodesk DWF sheets (DWFx goes through importXps)
     bool importOfficeDrawing(const QString& path);                   // PowerPoint slides and Excel sheets' drawings (DrawingML)
+    bool importSwf(const QString& path);                             // Adobe Flash movies: frames as animation frames
     bool importMpo(const QString& path);                             // multi-picture JPEG → a frame per picture (stereo wiggle)
     bool importPxd(const QString& path);                             // Pixelmator Pro → layers
     bool importClip(const QString& path);                            // Clip Studio Paint → layers

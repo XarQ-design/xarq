@@ -130,6 +130,11 @@ Document importDocxDocument(const QMap<QString, QByteArray>& zip, DmlImportStats
 QPainterPath dmlPresetPath(const QString& name, double w, double h, const QHash<QString, QString>& adjust = {});   // the outline of a preset shape
 QStringList dmlPresetNames();
 
+// Adobe Flash SWF (uncompressed, zlib or LZMA): the stage's frames as animation frames on layers (one frame:
+// a plain drawing), shapes with their fills and lines, bitmaps, text, buttons, sprites and masks.
+struct SwfImportStats { int frames = 0, shapes = 0, texts = 0, skipped = 0, missingBitmaps = 0, version = 0; double frameRate = 0; bool lzma = false; };
+Document importSwfDocument(const QByteArray& data, SwfImportStats* stats = nullptr);
+
 // Text-mode art (ANSI/ASCII .ans .asc .nfo .diz, .bin, XBin .xb, ArtWorx .adf, iCE Draw .idf, PCBoard .pcb,
 // TundraDraw .tnd) drawn with its font, as one picture; SAUCE metadata when the file has it.
 struct TextArt { QImage image; QString title, author, group; int columns = 0, rows = 0; };

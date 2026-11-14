@@ -112,6 +112,7 @@ add_executable(xarq
     ansiart.cpp
     dwfimport.cpp
     drawingml.cpp
+    swfimport.cpp
     xcfimport.cpp
     kraimport.cpp
     oraimport.cpp
@@ -223,6 +224,20 @@ if(LIBZSTD_FOUND)
 else()
     message(STATUS "Affinity vector import: ENABLED without zstd — v11 files fall back to the preview "
                    "(install libzstd-dev to enable them)")
+endif()
+
+# liblzma: Flash movies compressed with LZMA ("ZWS"); without it those don't open.
+pkg_check_modules(LIBLZMA liblzma)
+if(LIBLZMA_FOUND)
+    target_link_directories(xarq PRIVATE ${LIBLZMA_LIBRARY_DIRS})
+    target_link_libraries(xarq PRIVATE ${LIBLZMA_LIBRARIES})
+    if(LIBLZMA_INCLUDE_DIRS)
+        target_include_directories(xarq PRIVATE ${LIBLZMA_INCLUDE_DIRS})
+    endif()
+    set_property(SOURCE swfimport.cpp APPEND PROPERTY COMPILE_DEFINITIONS HAVE_LZMA)
+    message(STATUS "Flash SWF import: LZMA-compressed movies ENABLED")
+else()
+    message(STATUS "Flash SWF import: LZMA-compressed movies DISABLED (install liblzma-dev to enable them)")
 endif()
 
 # JPEG XR — link jxrlib and scope its headers/defines (-D__ANSI__ etc.) to jxr.cpp only, so the
