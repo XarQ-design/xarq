@@ -120,7 +120,7 @@ static void applyTheme(QApplication& app) {
            bare words on it, the others half faded. */
         QWidget#rpHeader { background:transparent; }
         QTabBar#rpTabs { background:transparent; }
-        QTabBar#rpTabs::tab { background:transparent; color:#80B8CEE0; height:26px; padding:0 16px; border:0; font-size:9px; font-weight:700; text-transform:uppercase; }
+        QTabBar#rpTabs::tab { background:transparent; color:#80B8CEE0; height:26px; padding:0 16px; border:0; border-radius:0; font-size:9px; font-weight:700; text-transform:uppercase; }
         QTabBar#rpTabs::tab:selected { color:#FFFFFF; }
         QTabBar#rpTabs::tab:hover:!selected { color:#B8CEE0; }
         /* Collapsible section card (DS Panel) — draggable to reorder / detach to a floating panel */
@@ -283,9 +283,10 @@ static void applyTheme(QApplication& app) {
         QMenu::item:disabled { color:rgba(184,206,224,90); }
         QMenu::separator { height:1px; background:#304251; margin:4px 6px; }
 
-        /* Document tabs — 75° sides with 6px curves, standing on the canvas */
+        /* Document tabs — 75° sides with 6px curves, standing on the canvas. border-radius 0: the generic QTabBar::tab
+           radius would clip the border-image. */
         QTabBar#docTabBar { background:#0D1216; qproperty-drawBase:0; }
-        QTabBar#docTabBar::tab { background:transparent; color:#8EA6B9; font-size:11px; font-weight:600; text-transform:none; padding:0 2px; margin:4px 0 0 0; min-width:84px; height:28px; border-width:0 18px 0 18px; border-image:url(:/xarq/assets/chrome/tab-normal.svg) 0 18 0 18 stretch stretch; }
+        QTabBar#docTabBar::tab { background:transparent; color:#8EA6B9; font-size:11px; font-weight:600; text-transform:none; border-radius:0; padding:0 2px; margin:4px 0 0 0; min-width:84px; height:28px; border-width:0 18px 0 18px; border-image:url(:/xarq/assets/chrome/tab-normal.svg) 0 18 0 18 stretch stretch; }
         QTabBar#docTabBar::tab:selected { color:#FFFFFF; border-image:url(:/xarq/assets/chrome/tab-selected.svg) 0 18 0 18 stretch stretch; }
         QTabBar#docTabBar::tab:hover:!selected { color:#B8CEE0; border-image:url(:/xarq/assets/chrome/tab-hover.svg) 0 18 0 18 stretch stretch; }
         QWidget#docTabCloseBox { background:transparent; }
