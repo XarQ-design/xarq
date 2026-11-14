@@ -16,6 +16,6 @@ cd "$work/libredwg-$version"
     --disable-werror > configure.out
 make -j"$(nproc)" -C src > /dev/null
 make -C src install > /dev/null
-make -C include install > /dev/null
+make install-includeHEADERS > /dev/null
 cd /
 rm -rf "$work"
