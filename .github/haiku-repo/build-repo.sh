@@ -33,6 +33,10 @@ info=$("$ENGINE" run --rm -v "$PACKAGES":/in:Z,ro -e LD_LIBRARY_PATH=/usr/local/
 			END { print f, n, v, a }"
 	done')
 
+# A repository holds one version of each package: keep the newest of each name and architecture (sort -V
+# orders 26.10~alpha before 26.11~alpha, as Haiku does).
+info=$(sort -k2,2 -k4,4 -k3,3V <<< "$info" | awk '{ newest[$2 " " $4] = $0 } END { for (k in newest) print newest[k] }')
+
 rm -rf "$OUT"/*/current
 while read -r file name version arch; do
 	if [ -z "$arch" ]; then
@@ -60,8 +64,8 @@ EOF
 
 	if ! "$ENGINE" run --rm -v "$dir":/repo:Z -w /repo -e LD_LIBRARY_PATH=/usr/local/lib "$IMAGE" \
 			sh -c 'package_repo create repo.info packages/*.hpkg'; then
-		echo "package_repo failed for $arch. Every package's vendor must be \"$VENDOR\":" >&2
-		echo "build with VENDOR=\"$VENDOR\" in haikuports.conf, or with src/haiku/make-hpkg.sh." >&2
+		echo "package_repo failed for $arch: see its message above. A package whose vendor isn't \"$VENDOR\"" >&2
+		echo "is one cause: build with VENDOR=\"$VENDOR\" in haikuports.conf, or with src/haiku/make-hpkg.sh." >&2
 		exit 1
 	fi
 	sha256sum "$dir/repo" | cut -d' ' -f1 > "$dir/repo.sha256"

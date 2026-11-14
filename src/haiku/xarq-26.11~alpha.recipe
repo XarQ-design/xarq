@@ -42,6 +42,7 @@ REQUIRES="
 	hyphen
 	myspell
 	qt6_imageformats
+	lib:libbz2
 	lib:libcdr_0.1
 	lib:libcdt
 	lib:libcgraph
@@ -93,6 +94,7 @@ REQUIRES="
 # haiku-* repositories of https://github.com/XarQ-design.
 BUILD_REQUIRES="
 	haiku_devel
+	devel:libbz2
 	devel:libcdr_0.1
 	devel:libetonyek_0.1
 	devel:libexpat
