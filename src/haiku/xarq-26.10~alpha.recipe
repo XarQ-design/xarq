@@ -31,6 +31,7 @@ REQUIRES="
 	djvu
 	jbig2dec
 	lcms
+	libmobi
 	libraw
 	openjpeg
 	qrencode
@@ -48,12 +49,20 @@ REQUIRES="
 	lib:libfreehand_0.1
 	lib:libfreetype
 	lib:libgdal
+	lib:libgdcmCommon
+	lib:libgdcmDICT
+	lib:libgdcmDSED
+	lib:libgdcmIOD
+	lib:libgdcmMSFF
 	lib:libGL
 	lib:libgvc
 	lib:libharfbuzz
 	lib:libjpeg
+	lib:libjpegxr
+	lib:libjxrglue
 	lib:libmspub_0.1
 	lib:libmwaw_0.3
+	lib:libopenslide
 	lib:libpagemaker_0.0
 	lib:libpng16
 	lib:libQt6Core
@@ -62,6 +71,7 @@ REQUIRES="
 	lib:libQt6Svg
 	lib:libQt6Widgets
 	lib:libqxp_0.0
+	lib:libredwg
 	lib:librevenge_0.0
 	lib:librevenge_generators_0.0
 	lib:librevenge_stream_0.0
@@ -75,6 +85,9 @@ REQUIRES="
 	lib:libzstd
 	"
 
+# libjpegxr, libgdcm*, libopenslide, libredwg and libmobi are not in HaikuPorts:
+# they come from the XarQ repository (https://xarq.org/haiku), built from the
+# haiku-* repositories of https://github.com/XarQ-design.
 BUILD_REQUIRES="
 	haiku_devel
 	devel:libcdr_0.1
@@ -83,12 +96,16 @@ BUILD_REQUIRES="
 	devel:libfreehand_0.1
 	devel:libfreetype
 	devel:libgdal
+	devel:libgdcmMSFF
 	devel:libgvc
 	devel:libharfbuzz
 	devel:libjpeg
+	devel:libjpegxr
+	devel:libjxrglue
 	devel:liblangtag
 	devel:libmspub_0.1
 	devel:libmwaw_0.3
+	devel:libopenslide
 	devel:libpagemaker_0.0
 	devel:libpng16
 	devel:libQt6Core
@@ -97,6 +114,7 @@ BUILD_REQUIRES="
 	devel:libQt6Svg
 	devel:libQt6Widgets
 	devel:libqxp_0.0
+	devel:libredwg
 	devel:librevenge_0.0
 	devel:libstaroffice_0.0
 	devel:libvisio_0.1
