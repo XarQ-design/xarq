@@ -63,6 +63,7 @@ requires		{
 	lib:libqrencode
 	lib:libdjvulibre
 	lib:libjbig2dec
+	lib:libjxl
 	lib:libmobi
 	dejavu
 	hyphen
