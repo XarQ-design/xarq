@@ -8,6 +8,7 @@
 #include "icons.h"
 #include "render.h"
 #include "splash.h"
+#include "shapes.h"
 #include <QtWidgets>
 #include <QBuffer>
 #include <QImageWriter>
@@ -493,17 +494,58 @@ void MainWindow::positionZoomPill(){
     m_zoomPill->raise();
 }
 
-// DS Panel: a collapsible section card (surface-panel + border-subtle + radius-lg + shadow-sm) with a
-// grad-chrome header — grip + UPPERCASE title + a chevron that toggles the body. Wraps any content widget.
+// The right panel's header: an edge-to-edge strip a shade darker than the panel, holding the Design | Prototype
+// tabs. The chosen tab is cut out of the shade as a 75° tab standing on the content, so it reads as part of it.
+class PanelHeader : public QWidget {
+public:
+    explicit PanelHeader(QTabBar* tabs, QWidget* parent=nullptr) : QWidget(parent), m_tabs(tabs){
+        setObjectName("rpHeader"); setFixedHeight(26);
+        auto* h=new QHBoxLayout(this); h->setContentsMargins(4,0,0,0); h->setSpacing(0);
+        h->addWidget(tabs); h->addStretch(1);
+        connect(tabs,&QTabBar::currentChanged,this,[this]{ update(); });
+    }
+protected:
+    void paintEvent(QPaintEvent*) override {
+        QPainter p(this); p.setRenderHint(QPainter::Antialiasing);
+        QPainterPath shade=shapes::rectPath(rect());
+        const QRect t=m_tabs->tabRect(m_tabs->currentIndex()).translated(m_tabs->pos());
+        if(t.isValid()) shade=shade.subtracted(shapes::standingTrap(t.left()-shapes::T6, t.width()+2*shapes::T6, height()-4, height()));
+        p.fillPath(shade, QColor(0,0,0,70));
+    }
+private:
+    QTabBar* m_tabs;
+};
+
+// A soft shadow (10px, 70→0 alpha) that the header lets fall over the scrolling content, or that rises from a
+// footer (up=true). An overlay kept on the area's top/bottom edge, transparent to the mouse.
+class EdgeShadow : public QWidget {
+public:
+    EdgeShadow(QAbstractScrollArea* area, bool up=false) : QWidget(area), m_area(area), m_up(up){
+        setAttribute(Qt::WA_TransparentForMouseEvents); setAttribute(Qt::WA_NoSystemBackground);
+        area->installEventFilter(this); place(); raise();
+    }
+protected:
+    bool eventFilter(QObject*, QEvent* e) override { if(e->type()==QEvent::Resize || e->type()==QEvent::Show) place(); return false; }
+    void paintEvent(QPaintEvent*) override {
+        QPainter p(this); QLinearGradient g(0, m_up?height():0, 0, m_up?0:height());
+        g.setColorAt(0, QColor(0,0,0,70)); g.setColorAt(1, QColor(0,0,0,0)); p.fillRect(rect(), g);
+    }
+private:
+    void place(){ const QRect v=m_area->viewport()->geometry(); setGeometry(v.left(), m_up? v.bottom()-9 : v.top(), v.width(), 10); raise(); }
+    QAbstractScrollArea* m_area; bool m_up;
+};
+
+// DS Panel: a collapsible section card (4px, a lighter face rather than an outline) with a darker header band —
+// grip + UPPERCASE title + a chevron that toggles the body. Wraps any content widget.
 class PanelStack;   // manages a column of sections: drag-to-reorder + detach/dock
 
 // small painted "pop-out" icon for the detach/dock button
 static QIcon detachIcon(){
     QPixmap pm(14,14); pm.fill(Qt::transparent);
     QPainter g(&pm); g.setRenderHint(QPainter::Antialiasing);
-    QPen pen(QColor(0x8E,0xA6,0xB9),1.3); g.setPen(pen); g.setBrush(Qt::NoBrush);
+    QPen pen(QColor(0xB8,0xCE,0xE0),1.3); g.setPen(pen); g.setBrush(Qt::NoBrush);
     g.drawRect(2,4,7,7); g.drawLine(9,3,12,3); g.drawLine(12,3,12,6); g.drawLine(12,3,8,7);
-    return QIcon(pm);
+    g.end(); return shapes::fadedIcon(QIcon(pm), QSize(14,14));
 }
 
 // DS Panel — a collapsible section card. Header: grip + UPPERCASE title + collapse chevron + detach button.
@@ -519,7 +561,8 @@ public:
 protected:
     bool eventFilter(QObject* o, QEvent* e) override;
 private:
-    PanelStack* m_host{}; QWidget* m_hdr{}; QLabel* m_chev{}; QWidget* m_body{}; QToolButton* m_detach{};
+    void showActions(bool on){ m_grip->setVisible(on); m_detach->setVisible(on); }
+    PanelStack* m_host{}; QWidget* m_hdr{}; QLabel* m_grip{}; QLabel* m_chev{}; QWidget* m_body{}; QToolButton* m_detach{};
     QWidget* m_float{}; bool m_open=true;
     bool m_pressed=false, m_dragging=false; QPoint m_pressGlobal, m_winOrigin;
 };
@@ -564,9 +607,9 @@ CollapsibleSection::CollapsibleSection(const QString& title, QWidget* content, P
     : m_host(host), m_body(content){
     setObjectName("dsSection"); setAttribute(Qt::WA_StyledBackground,true);
     auto* v=new QVBoxLayout(this); v->setContentsMargins(0,0,0,0); v->setSpacing(0);
-    m_hdr=new QWidget; m_hdr->setObjectName("dsSectionHdr"); m_hdr->setFixedHeight(30); m_hdr->setCursor(Qt::OpenHandCursor);
+    m_hdr=new QWidget; m_hdr->setObjectName("dsSectionHdr"); m_hdr->setFixedHeight(26); m_hdr->setCursor(Qt::OpenHandCursor);
     auto* h=new QHBoxLayout(m_hdr); h->setContentsMargins(8,0,5,0); h->setSpacing(7);
-    auto* grip=new QLabel(QStringLiteral("⋮⋮")); grip->setObjectName("dsGrip"); grip->setAttribute(Qt::WA_TransparentForMouseEvents,true);
+    auto* grip=m_grip=new QLabel(QStringLiteral("⋮⋮")); grip->setObjectName("dsGrip"); grip->setAttribute(Qt::WA_TransparentForMouseEvents,true);
     auto* lbl=new QLabel(title.toUpper()); lbl->setObjectName("dsSectionTitle"); lbl->setAttribute(Qt::WA_TransparentForMouseEvents,true);
     m_chev=new QLabel; m_chev->setObjectName("dsChevron"); m_chev->setAttribute(Qt::WA_TransparentForMouseEvents,true);
     m_detach=new QToolButton; m_detach->setObjectName("dsAct"); m_detach->setIcon(detachIcon()); m_detach->setIconSize(QSize(14,14));
@@ -574,12 +617,19 @@ CollapsibleSection::CollapsibleSection(const QString& title, QWidget* content, P
     connect(m_detach,&QToolButton::clicked,this,[this]{ if(!m_host) return; if(isFloating()) m_host->dock(this); else m_host->detach(this); });
     h->addWidget(grip); h->addWidget(lbl,1); h->addWidget(m_chev); h->addWidget(m_detach);
     v->addWidget(m_hdr); v->addWidget(m_body);
+    // The grip and detach button show only while the pointer is over the header, keeping their room when hidden.
+    for(QWidget* w : {static_cast<QWidget*>(grip), static_cast<QWidget*>(m_detach)}){
+        QSizePolicy sp=w->sizePolicy(); sp.setRetainSizeWhenHidden(true); w->setSizePolicy(sp); }
+    showActions(false);
+    m_hdr->setAttribute(Qt::WA_Hover);
     m_hdr->installEventFilter(this);
     setOpen(true);
 }
 
 bool CollapsibleSection::eventFilter(QObject* o, QEvent* e){
     if(o!=m_hdr) return QWidget::eventFilter(o,e);
+    if(e->type()==QEvent::Enter){ showActions(true); return false; }
+    if(e->type()==QEvent::Leave){ showActions(m_pressed); return false; }
     if(e->type()==QEvent::MouseButtonPress){ auto* me=static_cast<QMouseEvent*>(e);
         if(me->button()==Qt::LeftButton){ m_pressed=true; m_dragging=false; m_pressGlobal=me->globalPosition().toPoint();
             if(m_float) m_winOrigin=m_float->pos(); m_hdr->setCursor(Qt::ClosedHandCursor); } return false; }
@@ -590,7 +640,8 @@ bool CollapsibleSection::eventFilter(QObject* o, QEvent* e){
         return false; }
     if(e->type()==QEvent::MouseButtonRelease){ auto* me=static_cast<QMouseEvent*>(e);
         if(me->button()==Qt::LeftButton){ const bool wasDrag=m_dragging; m_pressed=false; m_dragging=false;
-            m_hdr->setCursor(Qt::OpenHandCursor); if(!wasDrag) setOpen(!m_open); } return true; }
+            m_hdr->setCursor(Qt::OpenHandCursor); if(!wasDrag) setOpen(!m_open);
+            showActions(m_hdr->underMouse()); } return true; }
     return QWidget::eventFilter(o,e);
 }
 
@@ -650,10 +701,16 @@ void MainWindow::buildDocks() {
     proto->addSection(new CollapsibleSection("Interaction", new InteractionPanel(m_canvas), proto));
     auto* protoScroll=new QScrollArea; protoScroll->setObjectName("rpScroll"); protoScroll->setWidgetResizable(true);
     protoScroll->setWidget(proto); protoScroll->setFrameShape(QFrame::NoFrame);
-    m_rpTabs=new QTabWidget; m_rpTabs->setObjectName("rpTabs"); m_rpTabs->setDocumentMode(true);
-    m_rpTabs->addTab(m_designScroll,"Design"); m_rpTabs->addTab(protoScroll,"Prototype");
+    // Header strip (always in view) over the scrolling content, which takes the panel's spare height.
+    m_rpTabs=new QTabBar; m_rpTabs->setObjectName("rpTabs"); m_rpTabs->setDrawBase(false); m_rpTabs->setExpanding(false);
+    m_rpTabs->addTab("Design"); m_rpTabs->addTab("Prototype");
+    auto* rpStack=new QStackedWidget; rpStack->addWidget(m_designScroll); rpStack->addWidget(protoScroll);
+    connect(m_rpTabs,&QTabBar::currentChanged,rpStack,&QStackedWidget::setCurrentIndex);
+    for(QScrollArea* a : {m_designScroll, protoScroll}) new EdgeShadow(a);
+    auto* rpHeader=new PanelHeader(m_rpTabs);
+    rpHeader->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Maximum);
     auto* rightPanel=new QWidget; rightPanel->setObjectName("rightPanel");
-    { auto* rpv=new QVBoxLayout(rightPanel); rpv->setContentsMargins(0,0,0,0); rpv->setSpacing(0); rpv->addWidget(m_rpTabs); }
+    { auto* rpv=new QVBoxLayout(rightPanel); rpv->setContentsMargins(0,0,0,0); rpv->setSpacing(0); rpv->addWidget(rpHeader); rpv->addWidget(rpStack,1); }
 
     // The right panel FLOATS as a translucent glass overlay over the canvas (DS RightDock) so the artwork
     // shows through — a child of the canvas, not an opaque dock column.
@@ -2042,18 +2099,19 @@ bool MainWindow::bitmapExportDialog(const QString& initialPath){
         #expReadout { font-family:"Ubuntu Mono"; font-size:11px; color:#8EA6B9; }
         QLabel[secHdr="true"] { color:#7A93A7; font-weight:700; font-size:11px; }
         QLabel[rowLbl="true"] { color:#8EA6B9; font-size:12px; }
-        #expRail { background:transparent; border-left:1px solid rgba(255,255,255,0.10); }
-        QToolButton[seg="true"] { background:#304251; border:1px solid rgba(255,255,255,0.10); color:#8EA6B9; padding:3px 9px; font-size:11px; }
-        QToolButton[seg="true"]:checked { background:rgba(184,206,224,0.24); border:1px solid #B8CEE0; color:#C8DBE9; }
-        QToolButton[card="true"] { background:#304251; border:1px solid rgba(255,255,255,0.10); border-radius:3px; text-align:left; padding:8px 10px; color:#B8CEE0; font-weight:700; font-size:12px; }
-        QToolButton[card="true"]:checked { background:rgba(184,206,224,0.16); border:1px solid #B8CEE0; color:#C8DBE9; }
-        #expGhost { background:transparent; color:#8EA6B9; border:1px solid rgba(255,255,255,0.10); border-radius:2px; padding:9px 16px; }
+        #expRail { background:transparent; border:0; }
+        /* Segmented choice: one raised strip; the chosen segment sinks with a white label. */
+        QToolButton[seg="true"] { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #4A6376, stop:1 #324350); border:0; border-bottom:1px solid rgba(0,0,0,115); border-radius:0; color:#CDDBE7; padding:5px 9px 4px 9px; font-size:11px; }
+        QToolButton[seg="true"]:hover { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #566F82, stop:1 #3E4F5E); }
+        QToolButton[seg="true"]:checked { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #222E39, stop:1 #344656); border-bottom-color:transparent; color:#FFFFFF; }
+        QToolButton[seg="true"][segEnd="first"] { border-top-left-radius:3px; border-bottom-left-radius:3px; }
+        QToolButton[seg="true"][segEnd="last"] { border-top-right-radius:3px; border-bottom-right-radius:3px; }
+        QToolButton[card="true"] { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #4A6376, stop:1 #324350); border:0; border-bottom:1px solid rgba(0,0,0,115); border-radius:3px; text-align:left; padding:8px 10px; color:#B8CEE0; font-weight:700; font-size:12px; }
+        QToolButton[card="true"]:hover { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #566F82, stop:1 #3E4F5E); }
+        QToolButton[card="true"]:checked { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #222E39, stop:1 #344656); border-bottom-color:transparent; color:#FFFFFF; }
+        #expGhost { background:transparent; color:#8EA6B9; border:0; border-radius:3px; padding:6px 12px; }
         #expGhost:hover { color:#F0F6FB; background:#212D37; }
-        QLineEdit { background:#304251; border:1px solid rgba(255,255,255,0.10); border-radius:3px; color:#B8CEE0; padding:4px 7px; }
         QScrollArea { border:none; }
-        QSlider::groove:horizontal { height:4px; background:#304251; border-radius:2px; }
-        QSlider::handle:horizontal { width:12px; margin:-5px 0; background:#B8CEE0; border-radius:6px; }
-        QSlider::sub-page:horizontal { background:#3B79FF; border-radius:2px; }
     )QSS");
 
     auto* root=new QVBoxLayout(&dlg); root->setContentsMargins(0,0,0,0); root->setSpacing(0);
@@ -2065,11 +2123,11 @@ bool MainWindow::bitmapExportDialog(const QString& initialPath){
     // preview column
     auto* prevCol=new QWidget; auto* prevV=new QVBoxLayout(prevCol); prevV->setContentsMargins(0,0,0,0); prevV->setSpacing(0);
     prevCol->setStyleSheet("background:#07090B;");
-    auto* prevBar=new QWidget; prevBar->setFixedHeight(40); prevBar->setStyleSheet("background:#0D1216;border-bottom:1px solid rgba(255,255,255,0.06);");
+    auto* prevBar=new QWidget; prevBar->setFixedHeight(40); prevBar->setStyleSheet("background:#0D1216;border:0;");
     auto* pbH=new QHBoxLayout(prevBar); pbH->setContentsMargins(12,0,12,0); pbH->setSpacing(8);
     auto* preview=new ExportPreview;
     auto* readout=new QLabel; readout->setObjectName("expReadout");
-    auto* readBar=new QWidget; readBar->setFixedHeight(30); readBar->setStyleSheet("background:#0D1216;border-top:1px solid rgba(255,255,255,0.06);");
+    auto* readBar=new QWidget; readBar->setFixedHeight(26); readBar->setStyleSheet("background:#0D1216;border:0;");
     { auto* rh=new QHBoxLayout(readBar); rh->setContentsMargins(12,0,12,0); rh->addWidget(readout); rh->addStretch(); }
     prevV->addWidget(prevBar); prevV->addWidget(preview,1); prevV->addWidget(readBar);
     bodyH->addWidget(prevCol,1);
@@ -2101,13 +2159,14 @@ bool MainWindow::bitmapExportDialog(const QString& initialPath){
         auto* w=new QWidget; auto* l=new QHBoxLayout(w); l->setContentsMargins(0,0,0,0); l->setSpacing(0);
         auto* grp=new QButtonGroup(w); grp->setExclusive(true);
         for(int i=0;i<items.size();++i){ auto* b=new QToolButton; b->setProperty("seg",true); b->setCheckable(true);
-            b->setText(items[i]); b->setCursor(Qt::PointingHandCursor); b->setChecked(i==cur); grp->addButton(b,i); l->addWidget(b,1); }
+            b->setText(items[i]); b->setCursor(Qt::PointingHandCursor); b->setChecked(i==cur); grp->addButton(b,i);
+            b->setProperty("segEnd", i==0 ? "first" : i==items.size()-1 ? "last" : "");   // the strip's ends keep 3px corners
+            b->setSizePolicy(QSizePolicy::Expanding,QSizePolicy::Fixed); l->addWidget(b,1); }   // one strip, no gaps
         connect(grp,QOverload<int>::of(&QButtonGroup::idClicked),w,[on](int i){ on(i); });
         return w; };
     auto secHeader=[&](const QString& t){ auto* w=new QWidget; auto* l=new QHBoxLayout(w); l->setContentsMargins(16,13,16,7); l->setSpacing(8);
         auto* lbl=new QLabel(t.toUpper()); lbl->setProperty("secHdr",true);
-        auto* rule=new QFrame; rule->setFrameShape(QFrame::HLine); rule->setStyleSheet("color:rgba(255,255,255,0.06);");
-        l->addWidget(lbl); l->addWidget(rule,1); railV->addWidget(w); };
+        l->addWidget(lbl); l->addStretch(1); railV->addWidget(w); };
     auto rowWrap=[&](QWidget* content){ auto* w=new QWidget; auto* l=new QHBoxLayout(w); l->setContentsMargins(16,3,16,3); l->addWidget(content); railV->addWidget(w); };
     auto labeledRow=[&](const QString& label, QWidget* content){ auto* w=new QWidget; auto* l=new QHBoxLayout(w); l->setContentsMargins(16,4,16,4); l->setSpacing(10);
         auto* lb=new QLabel(label); lb->setProperty("rowLbl",true); lb->setFixedWidth(96); l->addWidget(lb); l->addWidget(content,1); railV->addWidget(w); };

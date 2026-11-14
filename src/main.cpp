@@ -86,99 +86,132 @@ static void applyTheme(QApplication& app) {
         /* Content widgets are transparent so they show their PARENT surface (web-CSS behaviour), not the
            blanket QWidget colour — otherwise labels/checkboxes band against bars, dialogs, panels, etc. */
         QLabel, QCheckBox, QRadioButton, QGroupBox::indicator, QAbstractButton#link, QSlider { background: transparent; }
-        QToolTip { background: #E51A232B; color: white; border: none; padding: 3px 6px; font-size: 10px; }
+        QToolTip { background: #1A232B; color: white; border: 0; border-radius: 3px; padding: 4px 8px; font-size: 10px; }
 
         /* Top action bar — the slate band Subtitld's player controls sit on */
         QToolBar#topbar { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #2E3E4C, stop:1 #1E2A34); border: none; padding: 5px 8px; spacing: 3px; }
-        QToolBar#topbar QToolButton { padding: 6px; border-radius: 2px; color:#B8CEE0; }
+        QToolBar#topbar QToolButton { padding: 6px; border-radius:3px; color:#B8CEE0; }
         QToolBar#topbar QToolButton:hover { background: #3E5363; }
         QToolBar#topbar QToolButton:pressed { background: #2E3E4C; }
-        QToolBar QToolButton { color:#B8CEE0; padding:4px 8px; border-radius:2px; }
+        QToolBar QToolButton { color:#B8CEE0; padding:4px 8px; border-radius:3px; }
         QLabel#appTitle { font-weight: 800; font-size:17px; color: #F0F6FB; letter-spacing: -0.3px; background:transparent; }
 
         /* Tool rail — Subtitld's navigation rail: 50% black, and the active item carries a sky bar on its left edge */
-        QWidget#railGlass { background: rgba(7,9,11,0.86); border:none; border-radius:2px; }
+        QWidget#railGlass { background: rgba(7,9,11,0.86); border:none; border-radius:3px; }
         QScrollArea#railScroll { background:transparent; border:none; }
         QFrame#toolrail { background: transparent; border:none; }
-        QFrame#railsep { max-height:1px; margin:5px 10px; background:rgba(255,255,255,0.06); border:none; }
+        QFrame#railsep { max-height:1px; margin:5px 10px; background:transparent; border:0; }   /* groups are told apart by the gap, not a line */
         #toolrail QToolButton { border-radius:0; background: transparent; color:#8EA6B9; padding:6px; border:none; border-left:3px solid transparent; }
         #toolrail QToolButton:hover { background: rgba(184,206,224,0.02); border-left:3px solid rgba(184,206,224,0.25); color:#B8CEE0; }
         #toolrail QToolButton:checked { background: rgba(255,255,255,0.05); border-left:3px solid #C8DBE9; color:#C8DBE9; }
 
         /* Docks / panels — solid graphite, uppercase tracked title */
         QDockWidget { color:#8EA6B9; titlebar-close-icon:none; }
-        QDockWidget::title { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #1E2A34, stop:1 #151D24); padding: 8px 12px; border-bottom: 1px solid rgba(255,255,255,0.06); font-weight:700; font-size:11px; letter-spacing:1.4px; color:#8EA6B9; }
+        QDockWidget::title { background: rgba(0,0,0,70); padding: 6px 12px; border:0; font-weight:700; font-size:11px; letter-spacing:1.4px; color:#8EA6B9; }
         QDockWidget > QWidget { background: #1A232B; }
         QLabel#panelTitle { font-size: 11px; font-weight: 700; color: #8EA6B9; letter-spacing:1.4px; text-transform:uppercase; padding-bottom: 2px; }
 
         /* DS RightDock — floats over the canvas; translucent glass backdrop so the artwork shows through
-           (the section cards stay solid). Left hairline separates it from the canvas. */
-        QWidget#rightPanel { background: rgba(26,35,43,0.94); border-left:1px solid rgba(255,255,255,0.04); }
+           (the section cards stay solid). Its shade alone tells it from the canvas. */
+        QWidget#rightPanel { background: rgba(26,35,43,0.94); border:0; }
         QWidget#rpPage { background:transparent; }
         QScrollArea#rpScroll { background:transparent; border:none; }
-        QTabWidget#rpTabs::pane { border:none; background:transparent; }
-        #rpTabs QTabBar { qproperty-drawBase:0; background:transparent; }
-        #rpTabs QTabBar::tab { background:transparent; color:#80B8CEE0; padding:7px 10px 6px 10px; border:none; border-bottom:1px solid transparent; font-size:9px; font-weight:700; text-transform:uppercase; }
-        #rpTabs QTabBar::tab:selected { background: qlineargradient(x1:0,y1:1,x2:0,y2:0, stop:0 #1AC0D4E5, stop:1 #00C0D4E5); color:#C8DBE9; border-bottom:1px solid #B8CEE0; }
-        #rpTabs QTabBar::tab:hover:!selected { color:#B8CEE0; }
+        /* The panel's header strip (PanelHeader paints the shade, with the chosen tab cut out of it as a 75° tab):
+           bare words on it, the others half faded. */
+        QWidget#rpHeader { background:transparent; }
+        QTabBar#rpTabs { background:transparent; }
+        QTabBar#rpTabs::tab { background:transparent; color:#80B8CEE0; height:26px; padding:0 16px; border:0; font-size:9px; font-weight:700; text-transform:uppercase; }
+        QTabBar#rpTabs::tab:selected { color:#FFFFFF; }
+        QTabBar#rpTabs::tab:hover:!selected { color:#B8CEE0; }
         /* Collapsible section card (DS Panel) — draggable to reorder / detach to a floating panel */
-        QWidget#dsSection { background:#212D37; border:none; border-radius:2px; }
-        QWidget#dsSectionHdr { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #3E5363, stop:1 #304251); border-top-left-radius:2px; border-top-right-radius:2px; border-bottom:none; }
+        QWidget#dsSection { background:#2A3946; border:0; border-radius:4px; }
+        QWidget#dsSectionHdr { background: rgba(0,0,0,0.22); border-top-left-radius:4px; border-top-right-radius:4px; border:0; }
         QLabel#dsGrip { color:#566F84; font-size:10px; background:transparent; }
         QLabel#dsChevron { color:#8EA6B9; font-size:11px; font-weight:700; background:transparent; }
         QLabel#dsSectionTitle { color:#B8CEE0; font-size:9px; font-weight:700; letter-spacing:0.4px; text-transform:uppercase; background:transparent; }
-        QToolButton#dsAct { background:transparent; border:none; border-radius:2px; padding:2px; }
-        QToolButton#dsAct:hover { background:rgba(255,255,255,0.08); }
+        QToolButton#dsAct { background:transparent; border:none; border-radius:3px; padding:2px; }
+        QToolButton#dsAct:hover { background:transparent; }   /* its faded icon comes up instead */
         QWidget#floatPanel { background:transparent; }
         QWidget#panelGrip { background:transparent; }
         QWidget#panelGrip:hover { background:rgba(184,206,224,0.45); }
 
-        QGroupBox { border-image:url(:/xarq/assets/chrome/groupbox.svg) 3 3 3 3 stretch stretch; border-width:3px; margin-top:11px; padding:5px 6px 5px 6px; background:transparent; font-size:9px; font-weight:700; text-transform:uppercase; color:#B8CEE0; }
-        QGroupBox::title { subcontrol-origin: margin; left: 4px; padding: 0 2px; color:#B8CEE0; font-weight:700; font-size:9px; text-transform:uppercase; }
+        /* Groups are inset: a 4px panel sunk into the surface (darker at the top, a 1px shadow under the top edge, a
+           faint light lip along the bottom), the title inside it. An SVG border-image, because a 4px QSS radius is
+           drawn aliased; its rule must keep border-radius 0 or the image isn't drawn. */
+        QGroupBox { border-image:url(:/xarq/assets/chrome/groupbox-background.svg) 4 4 4 4 stretch stretch; border-width:4px; border-radius:0; margin:0; padding:18px 6px 6px 6px; background:transparent; font-size:9px; font-weight:700; text-transform:uppercase; color:#B8CEE0; }
+        QGroupBox:disabled { border-image:url(:/xarq/assets/chrome/groupbox-background-disabled.svg) 4 4 4 4 stretch stretch; }
+        QGroupBox::title { subcontrol-origin: border; subcontrol-position: top left; margin:5px 0 0 6px; padding:0; spacing:4px; background:transparent; color:#B8CEE0; font-weight:700; font-size:9px; text-transform:uppercase; }
         /* Right-dock inspectors (Properties / Layers / Colour) — compact: smaller type, tighter group
            padding + input wells (DS RightDock density) */
         QWidget#propsHost *, QWidget#layersHost *, QWidget#colourHost * { font-size: 11px; }
-        QWidget#propsHost QGroupBox { margin-top: 9px; padding: 4px 6px 5px 6px; }
-        QWidget#propsHost QComboBox, QWidget#propsHost QSpinBox, QWidget#propsHost QDoubleSpinBox, QWidget#propsHost QLineEdit { padding:2px 6px; min-height:15px; }
+        QWidget#propsHost QGroupBox { padding: 17px 5px 5px 5px; }
         QWidget#layersHost QListWidget::item { padding:2px 4px; }
+        /* A footer bar along a card's foot: a shade, edge to edge, rounded only where it meets the card's corners. */
+        QWidget#layersFoot { background: rgba(0,0,0,0.22); border-bottom-left-radius:4px; border-bottom-right-radius:4px; }
+        QToolButton#footIcon { background:transparent; border:0; border-radius:0; padding:0; }
+        QToolButton#footIcon:hover { background: rgba(255,255,255,18); }
 
-        /* Inputs — flat slate fields, sky text, no outline */
-        QComboBox, QSpinBox, QDoubleSpinBox, QLineEdit { background:#304251; border:1px solid transparent; border-radius:2px; padding:3px 6px; color:#B8CEE0; min-height:17px; selection-background-color:#B8CEE0; selection-color:#304251; }
+        /* Fields (line edits, spin boxes, key sequences): sunken, darker at the top and lighter at the bottom, 3px
+           corners, no border and never a contact line. The line edit inside a spin box / editable combo is part of
+           that field. */
+        QSpinBox, QDoubleSpinBox, QLineEdit, QKeySequenceEdit QLineEdit { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #324350, stop:1 #445B6C); border:0; border-radius:3px; padding:5px 6px; color:#B8CEE0; selection-background-color:#566F84; selection-color:#FFFFFF; }
         QSpinBox, QDoubleSpinBox { font-family:"Ubuntu Mono","DejaVu Sans Mono",monospace; }
-        QComboBox:hover, QSpinBox:hover, QDoubleSpinBox:hover, QLineEdit:hover { background:#3E5363; }
-        QComboBox:focus, QSpinBox:focus, QDoubleSpinBox:focus, QLineEdit:focus { border:1px solid #8DB0C9; }
-        QComboBox:disabled, QSpinBox:disabled, QDoubleSpinBox:disabled, QLineEdit:disabled { background:#803E5363; color:#566F84; }
-        QComboBox::drop-down { background:#3E5363; border:none; border-top-right-radius:2px; border-bottom-right-radius:2px; subcontrol-origin:padding; subcontrol-position:top right; width:18px; }
-        QComboBox::down-arrow { image:url(:/xarq/assets/chrome/combo-arrow.svg); width:16px; height:16px; }
-        /* Dropdown popup — the popup window is made translucent (RoundPopups filter) so the rounded
-           corners show through instead of a square window background. */
-        QComboBox QAbstractItemView { background:#304251; border:none; border-radius:4px; padding:3px; color:#B8CEE0; selection-background-color:#566F84; selection-color:#FFFFFF; outline:none; }
-        QComboBox QAbstractItemView::item { padding:4px 8px; border-radius:2px; min-height:18px; }
-        QSpinBox::up-button, QDoubleSpinBox::up-button, QSpinBox::down-button, QDoubleSpinBox::down-button { width:15px; border:none; background:transparent; }
-        QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { image:url(:/xarq/assets/chrome/spin-up.svg); width:8px; height:4px; }
-        QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { image:url(:/xarq/assets/chrome/spin-down.svg); width:8px; height:4px; }
+        QAbstractSpinBox QLineEdit, QComboBox QLineEdit { background:transparent; border:0; padding:0; min-height:0; }
+        QSpinBox:hover, QDoubleSpinBox:hover, QLineEdit:hover { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #3A4A58, stop:1 #4C6173); }
+        QSpinBox:disabled, QDoubleSpinBox:disabled, QLineEdit:disabled { background:#25323D; color:#50B8CEE0; }
+        /* Combo boxes are raised like buttons (they open a choice), with the contact line, and sink while open. The
+           list drops below the box in a transparent window (RoundPopups) so its 3px corners show. */
+        QComboBox { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #4A6376, stop:1 #324350); border:0; border-bottom:1px solid rgba(0,0,0,115); border-radius:3px; padding:5px 6px 4px 8px; color:#C8DBE9; combobox-popup:0; selection-background-color:#566F84; selection-color:#FFFFFF; }
+        QComboBox:hover { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #566F82, stop:1 #3E4F5E); }
+        QComboBox:on { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #222E39, stop:1 #344656); border-bottom-color:transparent; }
+        QComboBox:disabled { background:#25323D; color:#50B8CEE0; border-bottom-color:transparent; }
+        QComboBox::drop-down { background:transparent; border:0; subcontrol-origin:padding; subcontrol-position:center right; width:22px; }
+        QComboBox::down-arrow { image:url(:/xarq/assets/chrome/combobox-chevron.svg); width:9px; height:6px; }
+        QComboBox QAbstractItemView { background:#304251; border:0; border-radius:3px; padding:3px; color:#B8CEE0; selection-background-color:#4A5F70; selection-color:#FFFFFF; outline:0; }
+        QComboBox QAbstractItemView::item { min-height:22px; padding:0 8px; border-radius:3px; }
+        QComboBox QAbstractItemView::item:selected, QComboBox QAbstractItemView::item:hover { background:#4A5F70; color:#FFFFFF; }
+        /* Spin arrows: 6×3 triangles at their own size through ::up-arrow/::down-arrow (an image on ::up-button
+           stretches), in 13px halves with a faint hover tint. */
+        QSpinBox::up-button, QDoubleSpinBox::up-button { subcontrol-origin:border; subcontrol-position:top right; width:16px; height:13px; border:0; padding:0; background:transparent; image:none; }
+        QSpinBox::down-button, QDoubleSpinBox::down-button { subcontrol-origin:border; subcontrol-position:bottom right; width:16px; height:13px; border:0; padding:0; background:transparent; image:none; }
+        QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover, QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover { background:rgba(184,206,224,20); }
+        QSpinBox::up-arrow, QDoubleSpinBox::up-arrow { image:url(:/xarq/assets/chrome/spinbox-triangle-up.svg); width:6px; height:3px; }
+        QSpinBox::down-arrow, QDoubleSpinBox::down-arrow { image:url(:/xarq/assets/chrome/spinbox-triangle-down.svg); width:6px; height:3px; }
+        QSpinBox::up-arrow:disabled, QDoubleSpinBox::up-arrow:disabled, QSpinBox::up-arrow:off, QDoubleSpinBox::up-arrow:off,
+        QSpinBox::down-arrow:disabled, QDoubleSpinBox::down-arrow:disabled, QSpinBox::down-arrow:off, QDoubleSpinBox::down-arrow:off { image:none; }
 
-        /* Buttons — Subtitld's families: slate by default; sky for the affirmative action. 2px corners, bold caps. */
-        QPushButton { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #4A5F70, stop:1 #3E5363); border:none; border-radius:2px; padding:6px 12px; color:#B8CEE0; min-height:14px; font-size:11px; font-weight:700; text-transform:uppercase; }
-        QPushButton:hover { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #566F84, stop:1 #4A5F70); }
-        QPushButton:pressed { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #2E3E4C, stop:1 #3A4D5D); }
-        QPushButton:default { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #C8DBE9, stop:1 #B8CEE0); color:#304251; }
-        QPushButton:default:hover { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #D7E4EF, stop:1 #C8DBE9); }
-        QPushButton:default:pressed { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #8DB0C9, stop:1 #5F7B8D); }
-        QPushButton:disabled { color:#66B8CEE0; background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #8040566A, stop:1 #803E5363); }
+        /* Buttons: no border, depth from a raised gradient, 3px corners and a 1px 45% black contact line along the
+           bottom. 26px tall through padding (6 + 14 text + 5 + the line); the line stays as a transparent 1px when
+           pressed/checked/disabled so the button doesn't shrink. The default button is the primary family. */
+        QPushButton { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #4A6376, stop:1 #324350); border:0; border-bottom:1px solid rgba(0,0,0,115); border-radius:3px; padding:6px 12px 5px 12px; color:#CDDBE7; font-size:11px; font-weight:700; text-transform:uppercase; }
+        QPushButton:hover { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #566F82, stop:1 #3E4F5E); }
+        QPushButton:pressed, QPushButton:checked { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #222E39, stop:1 #344656); border-bottom-color:transparent; }
+        QPushButton:default, QPushButton[class="primary"] { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #627F97, stop:1 #4A5F71); color:#FFFFFF; }
+        QPushButton:default:hover, QPushButton[class="primary"]:hover { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #7892A8, stop:1 #59738A); }
+        QPushButton:default:pressed, QPushButton[class="primary"]:pressed { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #324350, stop:1 #445B6C); border-bottom-color:transparent; }
+        QPushButton[class="secondary"] { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #DEE9F2, stop:1 #B2CDE0); color:#3E5363; }
+        QPushButton[class="secondary"]:hover { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #E7EEF3, stop:1 #BDD0DF); }
+        QPushButton[class="secondary"]:pressed { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #95B1C9, stop:1 #B3C7D8); border-bottom-color:transparent; }
+        QPushButton:disabled { background:#25323D; color:#50B8CEE0; border-bottom-color:transparent; }
         /* The optional Standard toolbar's Export */
-        QPushButton#ctaExport { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #C8DBE9, stop:1 #B8CEE0); border:none; border-radius:2px; color:#304251; padding:5px 14px; min-height:18px; }
+        QPushButton#ctaExport { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #C8DBE9, stop:1 #B8CEE0); border:none; border-radius:3px; color:#304251; padding:5px 14px; min-height:18px; }
         QPushButton#ctaExport:hover { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #D7E4EF, stop:1 #C8DBE9); }
         QPushButton#ctaExport:pressed { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #8DB0C9, stop:1 #5F7B8D); }
 
-        QToolButton { border-radius:2px; color:#B8CEE0; }
+        QToolButton { border-radius:3px; color:#B8CEE0; }
         QToolButton:hover { background:#3E5363; }
         QToolButton:checked { background:rgba(184,206,224,0.18); color:#C8DBE9; }
 
-        QSlider::groove:horizontal { height:6px; background:#803E5363; border-radius:2px; }
-        QSlider::handle:horizontal { width:10px; margin:-4px 0; border-radius:2px; background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #C8DBE9, stop:1 #B8CEE0); }
-        QSlider::handle:horizontal:hover { background:#D7E4EF; }
-        QSlider::sub-page:horizontal { background:#566F84; border-radius:2px; }
+        /* Slider: a 10px sunken track with 3px corners, a raised fill up to the grip, and a thin 4×10 light grip
+           flush inside the track. */
+        QSlider::groove:horizontal { height:10px; margin:0; padding:0; border-radius:3px; background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #222E39, stop:1 #344656); }
+        QSlider::sub-page:horizontal { height:10px; border-radius:3px; background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #7F94A6, stop:1 #5F7688); }
+        QSlider::add-page:horizontal { background:transparent; }
+        QSlider::handle:horizontal { width:4px; margin:0; padding:0; border:0; border-radius:0; background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #E7EEF3, stop:1 #BDD0DF); }
+        QSlider::handle:horizontal:disabled { background:transparent; }
+        /* Progress bars sit flush in their row: square, sunken track, light raised fill. */
+        QProgressBar { border:0; border-radius:0; color:#3E5363; text-align:center; background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #222E39, stop:1 #344656); }
+        QProgressBar::chunk { border-radius:0; background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #CDDDE9, stop:1 #A3BFD7); }
 
         QCheckBox { spacing:7px; }
         QCheckBox::indicator, QGroupBox::indicator { width:16px; height:16px; }
@@ -187,29 +220,28 @@ static void applyTheme(QApplication& app) {
         QCheckBox::indicator:unchecked, QGroupBox::indicator:unchecked { image:url(:/xarq/assets/chrome/check-off.svg); }
         QCheckBox::indicator:unchecked:hover, QGroupBox::indicator:unchecked:hover { image:url(:/xarq/assets/chrome/check-off-hover.svg); }
         QCheckBox::indicator:disabled, QGroupBox::indicator:disabled { image:url(:/xarq/assets/chrome/check-disabled.svg); }
-        QRadioButton::indicator { width:14px; height:14px; border-radius:7px; border:1px solid #566F84; background:#304251; }
-        QRadioButton::indicator:hover { background:#3E5363; }
-        QRadioButton::indicator:checked { background:#B8CEE0; border-color:#B8CEE0; }
+        QRadioButton::indicator { width:14px; height:14px; border-radius:7px; border:0; background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #222E39, stop:1 #445B6C); }
+        QRadioButton::indicator:hover { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #2C3A47, stop:1 #4C6173); }
+        QRadioButton::indicator:checked { background: qradialgradient(cx:0.5,cy:0.5,radius:0.5,fx:0.5,fy:0.5, stop:0 #E3EDF5, stop:0.42 #E3EDF5, stop:0.5 #222E39, stop:1 #445B6C); }
 
-        QListWidget, QTreeWidget, QTableWidget { background:#141C23; border:none; border-radius:2px; padding:2px; alternate-background-color:#1A232B; }
-        QListWidget::item, QTreeWidget::item { padding:3px 7px; border-radius:2px; }
+        QListWidget, QTreeWidget, QTableWidget { background:#141C23; border:none; border-radius:3px; padding:2px; alternate-background-color:#1A232B; }
+        QListWidget::item, QTreeWidget::item { padding:3px 7px; border-radius:3px; }
         QListWidget::item:selected, QTreeWidget::item:selected { background:#566F84; color:#FFFFFF; }
         QListWidget::item:hover, QTreeWidget::item:hover { background:#3E5363; }
         QHeaderView::section { background:#304251; color:#B8CEE0; border:none; padding:5px 8px; font-weight:700; font-size:9px; text-transform:uppercase; }
 
         QScrollArea { border:none; background:#1A232B; }
-        QScrollBar:vertical { background:transparent; width:8px; margin:2px 0; border-radius:4px; }
-        QScrollBar::handle:vertical { background:rgba(136,136,136,0.5); border-radius:4px; min-height:20px; }
-        QScrollBar::handle:vertical:hover { background:rgba(170,170,170,0.7); }
-        QScrollBar::add-line, QScrollBar::sub-line { height:0; width:0; }
-        QScrollBar::add-page, QScrollBar::sub-page { background:transparent; }
-        QScrollBar:horizontal { background:transparent; height:8px; margin:0 2px; border-radius:4px; }
-        QScrollBar::handle:horizontal { background:rgba(136,136,136,0.5); border-radius:4px; min-width:20px; }
-        QScrollBar::handle:horizontal:hover { background:rgba(170,170,170,0.7); }
-        /* Slim, unobtrusive scrollbar inside the floating glass tool rail */
-        QScrollArea#railScroll QScrollBar:vertical { width:5px; margin:1px; }
-        QScrollArea#railScroll QScrollBar::handle:vertical { background:rgba(255,255,255,0.14); border-radius:2px; min-height:24px; }
-        QScrollArea#railScroll QScrollBar::handle:vertical:hover { background:rgba(255,255,255,0.24); }
+        /* Scrollbars: just the handle, an 8px raised pill (SVG, so its ends stay round), no track. The border-image
+           needs a border-width or Qt draws it square; the pages must be styled or Windows draws a checkered track. */
+        QScrollBar:vertical { background:transparent; width:8px; margin:0; border:0; }
+        QScrollBar::handle:vertical { border-image:url(:/xarq/assets/chrome/scrollbar-handle-vertical.svg) 4 0 4 0 stretch stretch; border-width:4px 0; background:none; min-height:30px; }
+        QScrollBar::handle:vertical:hover { border-image:url(:/xarq/assets/chrome/scrollbar-handle-vertical-hover.svg) 4 0 4 0 stretch stretch; }
+        QScrollBar:horizontal { background:transparent; height:8px; margin:0; border:0; }
+        QScrollBar::handle:horizontal { border-image:url(:/xarq/assets/chrome/scrollbar-handle-horizontal.svg) 0 4 0 4 stretch stretch; border-width:0 4px; background:none; min-width:30px; }
+        QScrollBar::handle:horizontal:hover { border-image:url(:/xarq/assets/chrome/scrollbar-handle-horizontal-hover.svg) 0 4 0 4 stretch stretch; }
+        QScrollBar::add-line, QScrollBar::sub-line { height:0; width:0; background:none; border:none; }
+        QScrollBar::add-page, QScrollBar::sub-page { background:none; }
+        QScrollBar:corner { background:transparent; }
 
         /* Frameless title bar, after Subtitld's: Save + the curved Export flush in the corner | title⇄menu hover-swap |
            wordmark on a faint curved tab + window controls. The curves are 9-sliced sprites. */
@@ -218,7 +250,7 @@ static void applyTheme(QApplication& app) {
         /* ...but a QMenu popped from the embedded menu bar is a QObject-descendant of #titleBar, so the
            blanket rule above (an ID selector, higher specificity than a plain `QMenu`) would win and make
            the whole translucent popup see-through. Re-assert the menu body at equal specificity, after it. */
-        QWidget#titleBar QMenu { background:#304251; }
+        QWidget#titleBar QMenu { background:#1A232B; }
         QToolButton#titleSave { background:transparent; border-radius:0; border-width:0 1px 2px 0; padding:0 0 0 10px; border-image:url(:/xarq/assets/chrome/save-normal.svg) 1 1 2 1 stretch stretch; }
         QToolButton#titleSave:hover { background:transparent; border-image:url(:/xarq/assets/chrome/save-hover.svg) 1 1 2 1 stretch stretch; }
         QToolButton#titleSave:pressed { border-image:url(:/xarq/assets/chrome/save-pressed.svg) 1 1 2 1 stretch stretch; }
@@ -233,36 +265,37 @@ static void applyTheme(QApplication& app) {
         QToolButton#winBtn:pressed { background:rgba(255,255,255,0.047); }
         QLabel#titlePath  { color:rgba(255,255,255,0.45); font-size:9px; background:transparent; }
         QLabel#titleName  { color:rgba(255,255,255,0.85); font-size:11px; font-weight:700; background:transparent; }
-        QLabel#brandTab   { color:rgba(255,255,255,0.32); font-size:12px; padding:0 10px 0 0; border-width:0 1px 1px 36px; border-image:url(:/xarq/assets/chrome/brand-tab.svg) 0 1 1 36 stretch stretch; }
-        /* Floating canvas toolbar — shaped like Subtitld's timecode well: both sides curved, flaring to the bottom */
+        QLabel#brandTab   { color:rgba(255,255,255,0.32); font-size:12px; padding:0 10px 0 0; border-width:0 1px 1px 21px; border-image:url(:/xarq/assets/chrome/brand-tab.svg) 0 1 1 21 stretch stretch; }
+        /* Floating canvas toolbar — both sides slanted at 75°, flaring into the canvas at its foot */
         QWidget#zoomPill { background:transparent; border-width:0 20px 0 20px; border-image:url(:/xarq/assets/chrome/pill.svg) 0 20 0 20 stretch stretch; }
-        QToolButton#pillBtn { background:transparent; border:none; border-radius:2px; padding:4px; }
+        QToolButton#pillBtn { background:transparent; border:none; border-radius:3px; padding:4px; }
         QToolButton#pillBtn:hover { background: rgba(255,255,255,0.08); }
         QToolButton#pillBtn:checked { background: rgba(184,206,224,0.22); }
-        QFrame#pillSep { max-width:1px; background: rgba(255,255,255,0.10); margin:8px 3px; border:none; }
+        QFrame#pillSep { max-width:1px; background:transparent; margin:8px 3px; border:0; }
         QMenuBar, QMenuBar#embeddedMenu { background:transparent; border:none; padding:0; }
-        QMenuBar::item { padding:4px 10px; background:transparent; color:#B8CEE0; border-radius:2px; font-size:11px; font-weight:700; }
-        QMenuBar::item:selected { background:#3E5363; color:#FFFFFF; border-radius:2px; }
-        QMenuBar::item:pressed { background:#304251; color:#FFFFFF; border-radius:2px; }
-        QMenu { background:#304251; border:none; border-radius:4px; padding:3px; }
-        QMenu::item { padding:4px 24px 4px 14px; border-radius:2px; color:#B8CEE0; font-size:11px; }
-        QMenu::item:selected { background:#566F84; color:#FFFFFF; }
-        QMenu::item:disabled { color:#66B8CEE0; }
-        QMenu::separator { height:1px; background:rgba(255,255,255,0.08); margin:4px 8px; }
+        QMenuBar::item { padding:4px 10px; background:transparent; color:#B8CEE0; border-radius:3px; font-size:11px; font-weight:700; }
+        QMenuBar::item:selected { background:#3E5363; color:#FFFFFF; border-radius:3px; }
+        QMenuBar::item:pressed { background:#304251; color:#FFFFFF; border-radius:3px; }
+        /* Menus: flat, 3px corners (their windows are transparent, see RoundPopups), 3px items. */
+        QMenu { background:#1A232B; border:0; border-radius:3px; padding:2px; color:#B8CEE0; }
+        QMenu::item { padding:6px 24px 6px 12px; border-radius:3px; color:#B8CEE0; font-size:11px; }
+        QMenu::item:selected { background:#3E5363; color:#FFFFFF; }
+        QMenu::item:disabled { color:rgba(184,206,224,90); }
+        QMenu::separator { height:1px; background:#304251; margin:4px 6px; }
 
-        /* Document tabs — the Export button's S-curve on both sides, standing on the canvas */
+        /* Document tabs — 75° sides with 6px curves, standing on the canvas */
         QTabBar#docTabBar { background:#0D1216; qproperty-drawBase:0; }
         QTabBar#docTabBar::tab { background:transparent; color:#8EA6B9; font-size:11px; font-weight:600; text-transform:none; padding:0 2px; margin:4px 0 0 0; min-width:84px; height:28px; border-width:0 18px 0 18px; border-image:url(:/xarq/assets/chrome/tab-normal.svg) 0 18 0 18 stretch stretch; }
         QTabBar#docTabBar::tab:selected { color:#FFFFFF; border-image:url(:/xarq/assets/chrome/tab-selected.svg) 0 18 0 18 stretch stretch; }
         QTabBar#docTabBar::tab:hover:!selected { color:#B8CEE0; border-image:url(:/xarq/assets/chrome/tab-hover.svg) 0 18 0 18 stretch stretch; }
         QWidget#docTabCloseBox { background:transparent; }
-        QToolButton#docTabClose { background:transparent; border:none; border-radius:2px; padding:0; }
+        QToolButton#docTabClose { background:transparent; border:none; border-radius:3px; padding:0; }
         QToolButton#docTabClose:hover { background:rgba(255,255,255,0.14); }
-        QTabWidget::pane { background:transparent; border:none; border-top:1px solid #1AC0D4E5; margin-top:-1px; }
+        QTabWidget::pane { background:transparent; border:0; }
         QTabBar { background:transparent; border:none; }
-        QTabBar::tab { background:transparent; color:#80B8CEE0; font-size:9px; font-weight:700; text-transform:uppercase; padding:7px 10px 6px 10px; border:none; border-bottom:1px solid transparent; }
+        QTabBar::tab { background:transparent; color:#80B8CEE0; font-size:9px; font-weight:700; text-transform:uppercase; padding:7px 10px; border:0; border-top-left-radius:3px; border-top-right-radius:3px; }
         QTabBar::tab:hover { color:#B8CEE0; }
-        QTabBar::tab:selected { background: qlineargradient(x1:0,y1:1,x2:0,y2:0, stop:0 #1AC0D4E5, stop:1 #00C0D4E5); color:#C8DBE9; border-bottom:1px solid #B8CEE0; }
+        QTabBar::tab:selected { background: rgba(0,0,0,0.22); color:#FFFFFF; }
 
         /* DS StatusBar — 11px, tertiary base; accent tool label, mono numerics, green Saved */
         QStatusBar { background:#07090B; border:none; color:#7A93A7; }
@@ -283,7 +316,7 @@ static void applyTheme(QApplication& app) {
            with 4px corners, the title on it, the close button in a slanted notch, Cancel as text on the left of the
            footer and the main button on a sky tab at its right. */
         QDialog[xqChromed="true"] { background:transparent; }
-        QWidget#dialogFrame { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #1E2833, stop:1 #F23A4D5D); border:1px solid #1A232B; border-radius:4px; }
+        QWidget#dialogFrame { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #1E2833, stop:1 #F23A4D5D); border:0; border-radius:4px; }
         QWidget#dialogTitle, QWidget#dialogContent, QWidget#dialogBottom { background:transparent; }
         QWidget#dialogFrame .QWidget, QWidget#dialogFrame .QFrame, QWidget#dialogFrame QStackedWidget { background:transparent; }   /* plain containers let the gradient through */
         QDialog[xqChromed="true"] QSizeGrip { image:none; background:transparent; width:12px; height:12px; }
@@ -300,21 +333,19 @@ static void applyTheme(QApplication& app) {
         QWidget#dialogBottom QPushButton[footer="tab"] { color:#1E2B36; }
         QWidget#dialogBottom QPushButton[footer="tab"]:hover { color:#0D1319; background:transparent; }
         QWidget#dialogBottom QPushButton[footer="tab"]:disabled { color:#7A93A7; }
-        QLabel#printPreview { background:#07090B; border:none; border-radius:2px; }
+        QLabel#printPreview { background:#07090B; border:none; border-radius:3px; }
         QDialog#printDialog QGroupBox { min-width:300px; }
 
-        /* InfoBar — the slate band; the tool name is a curved tag flush with the window edge, echoing Export above it */
+        /* InfoBar — the slate band; the tool name is a raised tag flush in the window's corner, its right side a 75° slant like Export's above it */
         QToolBar#infobarTb { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #2E3E4C, stop:1 #1E2A34); border:none; padding:0; spacing:0; }
         QWidget#infobar { background:transparent; }
-        QLabel#infoTool { font-weight:700; font-size:11px; text-transform:uppercase; color:#F0F6FB; padding:0 4px 0 12px; border-width:0 30px 0 0; border-image:url(:/xarq/assets/chrome/tooltag.svg) 0 30 0 0 stretch stretch; }
+        QLabel#infoTool { font-weight:700; font-size:11px; text-transform:uppercase; color:#F0F6FB; padding:0 2px 0 12px; border-width:0 14px 0 0; border-image:url(:/xarq/assets/chrome/tooltag.svg) 0 14 0 0 stretch stretch; }
         QLabel#infoLbl  { color:#8EA6B9; padding-left:3px; }
         QLabel#infoHint { color:#7A93A7; font-style:italic; }
-        QFrame#infoSep  { background:rgba(255,255,255,0.08); max-width:1px; margin:5px 5px; border:none; }
-        QWidget#infobar QComboBox, QWidget#infobar QSpinBox, QWidget#infobar QDoubleSpinBox, QWidget#infobar QLineEdit { background:#3E5363; padding:2px 6px; min-height:18px; }
-        QWidget#infobar QComboBox:hover, QWidget#infobar QSpinBox:hover, QWidget#infobar QDoubleSpinBox:hover, QWidget#infobar QLineEdit:hover { background:#4A5F70; }
-        QWidget#infobar QToolButton { padding:3px 10px; border:none; background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #4A5F70, stop:1 #3E5363); border-radius:2px; font-weight:700; font-size:11px; }
-        QWidget#infobar QToolButton:hover { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #566F84, stop:1 #4A5F70); }
-        QWidget#infobar QToolButton:checked { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #C8DBE9, stop:1 #B8CEE0); color:#304251; }
+        QFrame#infoSep  { background:transparent; max-width:1px; margin:5px 5px; border:0; }
+        QWidget#infobar QToolButton { padding:5px 10px 4px 10px; border:0; border-bottom:1px solid rgba(0,0,0,115); border-radius:3px; background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #4A6376, stop:1 #324350); color:#CDDBE7; font-weight:700; font-size:11px; }
+        QWidget#infobar QToolButton:hover { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #566F82, stop:1 #3E4F5E); }
+        QWidget#infobar QToolButton:pressed, QWidget#infobar QToolButton:checked { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #222E39, stop:1 #344656); border-bottom-color:transparent; color:#FFFFFF; }
 
         /* Colour Line — bottom palette strip */
         QToolBar#colourTb { background:#07090B; border:none; padding:0; spacing:0; }

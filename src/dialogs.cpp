@@ -54,7 +54,7 @@ protected:
 // small swatch button
 static QPushButton* swatch(const QColor& c, const QString& tip){
     auto* b=new QPushButton; b->setFixedSize(20,20); b->setToolTip(tip); b->setCursor(Qt::PointingHandCursor);
-    b->setStyleSheet(QString("background:%1;border:1px solid #222;border-radius:3px;").arg(c.name()));
+    b->setStyleSheet(QString("background:%1;border:0;border-bottom:1px solid rgba(0,0,0,115);border-radius:3px;padding:0;").arg(c.name()));
     return b;
 }
 
@@ -74,7 +74,7 @@ QColor ColorEditor::pick(QWidget* parent, const QColor& initial, Canvas* canvas,
     // right: model + fields + hex + preview + named swatches
     auto* right=new QVBoxLayout; right->setSpacing(8); top->addLayout(right);
 
-    auto* preview=new QFrame; preview->setFixedHeight(34); preview->setFrameShape(QFrame::StyledPanel);
+    auto* preview=new QFrame; preview->setFixedHeight(34); preview->setFrameShape(QFrame::NoFrame);
     auto* prevLay=new QHBoxLayout(preview); prevLay->setContentsMargins(0,0,0,0); prevLay->setSpacing(0);
     auto* oldSw=new QLabel; auto* newSw=new QLabel; oldSw->setAutoFillBackground(false); newSw->setAutoFillBackground(false);
     prevLay->addWidget(oldSw); prevLay->addWidget(newSw);
@@ -516,9 +516,9 @@ void MeshGradientDialog::show(QWidget* parent, Canvas* canvas){
         QLayoutItem* it; while((it=grid->takeAt(0))){ delete it->widget(); delete it; }
         for(int y=0;y<R;++y) for(int x=0;x<C;++x){ const int idx=y*C+x;
             auto* b=new QToolButton; b->setFixedSize(42,30);
-            b->setStyleSheet(QString("background:%1;border:1px solid #555").arg(nodes[idx].name()));
+            b->setStyleSheet(QString("background:%1;border:0;border-bottom:1px solid rgba(0,0,0,115);border-radius:3px").arg(nodes[idx].name()));
             QObject::connect(b,&QToolButton::clicked,&dlg,[b,idx,canvas,&nodes,&dlg]{ QColor c=ColorEditor::pick(&dlg, nodes[idx], canvas, false);
-                if(c.isValid()){ nodes[idx]=c; b->setStyleSheet(QString("background:%1;border:1px solid #555").arg(c.name())); } });
+                if(c.isValid()){ nodes[idx]=c; b->setStyleSheet(QString("background:%1;border:0;border-bottom:1px solid rgba(0,0,0,115);border-radius:3px").arg(c.name())); } });
             grid->addWidget(b,y,x); }
     };
     auto doResize=[&]{ const int nr=rSp->value(), nc=cSp->value();

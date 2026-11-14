@@ -27,7 +27,7 @@ namespace tok {
 // grid shows through (labels are already transparent via the global theme).
 static const char* kStartQss = R"QSS(
     #startPanel, #startDialog { background:qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #07090B, stop:1 #1A232B); }
-    #startSidebar { background:#0D1216; border-right:1px solid rgba(255,255,255,0.06); }
+    #startSidebar { background:#0D1216; border:0; }
     #startMain, #startContent { background:transparent; }
     QScrollArea#startScroll { background:transparent; border:none; }
     QScrollArea#startScroll > QWidget > QWidget { background:transparent; }
@@ -40,39 +40,40 @@ static const char* kStartQss = R"QSS(
 
     /* Controls use the design-system --radius-md (3px). Primary = --grad-accent gradient (wt 600, dark
        border + top highlight); Outline = accent-300 text on an accent-600 border. */
-    QPushButton#btnPrimary { background:qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #C8DBE9, stop:1 #B8CEE0); border:none; border-radius:2px; color:#304251; font-size:12px; font-weight:700; text-transform:uppercase; padding:0 18px; min-height:36px; max-height:36px; text-align:center; }
+    QPushButton#btnPrimary { background:qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #C8DBE9, stop:1 #B8CEE0); border:none; border-radius:3px; color:#304251; font-size:12px; font-weight:700; text-transform:uppercase; padding:0 18px; min-height:26px; max-height:26px; text-align:center; }
     QPushButton#btnPrimary:hover { background:qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #D7E4EF, stop:1 #C8DBE9); }
     QPushButton#btnPrimary:pressed { background:qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #8DB0C9, stop:1 #5F7B8D); }
-    QPushButton#btnOutline { background:qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #4A5F70, stop:1 #3E5363); border:none; border-radius:2px; color:#B8CEE0; font-size:11px; font-weight:700; text-transform:uppercase; padding:0 14px; min-height:28px; max-height:28px; text-align:center; }
+    QPushButton#btnOutline { background:qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #4A5F70, stop:1 #3E5363); border:none; border-radius:3px; color:#B8CEE0; font-size:11px; font-weight:700; text-transform:uppercase; padding:0 14px; min-height:26px; max-height:26px; text-align:center; }
     QPushButton#btnOutline:hover { background:qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #566F84, stop:1 #4A5F70); }
-    QPushButton#btnSecondary { background:qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #4A5F70, stop:1 #3E5363); border:none; border-radius:2px; color:#B8CEE0; font-size:11px; font-weight:700; text-transform:uppercase; padding:0 12px; }
+    QPushButton#btnSecondary { background:qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #4A5F70, stop:1 #3E5363); border:none; border-radius:3px; color:#B8CEE0; font-size:11px; font-weight:700; text-transform:uppercase; padding:0 12px; }
     QPushButton#btnSecondary:hover { background:#4A5F70; }
-    QPushButton#btnGhost { background:transparent; border:none; border-radius:2px; color:#B8CEE0; font-size:12px; font-weight:600; padding:0 10px; }
+    QPushButton#btnGhost { background:transparent; border:none; border-radius:3px; color:#B8CEE0; font-size:12px; font-weight:600; padding:0 10px; }
     QPushButton#btnGhost:hover { background:rgba(255,255,255,0.06); color:#F0F6FB; }
-    QPushButton#sideLink { background:transparent; border:none; border-top:1px solid rgba(255,255,255,0.06); text-align:left; min-height:40px; }
+    QPushButton#sideLink { background:transparent; border:0; text-align:left; min-height:40px; }
+    QPushButton#sideLink:hover { background:rgba(255,255,255,18); }
 
-    QLineEdit#search { background:#304251; border:1px solid rgba(255,255,255,0.10); border-radius:2px; color:#B8CEE0; padding:6px 10px; font-size:13px; selection-background-color:#B8CEE0; }
-    QLineEdit#search:focus { border:1px solid #B8CEE0; }
+    QLineEdit#search { background:qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #324350, stop:1 #445B6C); border:0; border-radius:3px; color:#B8CEE0; padding:6px 10px; font-size:13px; selection-background-color:#566F84; }
+    QLineEdit#search:hover, QLineEdit#search:focus { background:qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #3A4A58, stop:1 #4C6173); }
 
-    QFrame#tplCard { background:#1A232B; border:1px solid rgba(255,255,255,0.06); border-radius:2px; }
-    QFrame#tplCard:hover { border:1px solid rgba(255,255,255,0.18); background:#253340; }
-    QFrame#tplCardDashed { background:transparent; border:1px dashed rgba(255,255,255,0.16); border-radius:2px; }
-    QFrame#tplCardDashed:hover { border:1px dashed rgba(255,255,255,0.32); background:rgba(255,255,255,0.02); }
+    QFrame#tplCard { background:#1A232B; border:0; border-radius:4px; }
+    QFrame#tplCard:hover { background:#253340; }
+    QFrame#tplCardDashed { background:rgba(0,0,0,0.22); border:0; border-radius:4px; }
+    QFrame#tplCardDashed:hover { background:rgba(255,255,255,18); }
     QLabel#cardTitle { font-size:13px; font-weight:600; color:#F0F6FB; background:transparent; }
     QLabel#cardMeta { font-size:11px; color:#7A93A7; background:transparent; }
     QLabel#cardTile { background:transparent; }
 
-    QFrame#recBanner { background:rgba(245,178,61,0.15); border:1px solid rgba(245,178,61,0.32); border-radius:2px; }
+    QFrame#recBanner { background:rgba(245,178,61,0.15); border:0; border-radius:4px; }
     QLabel#recTitle { font-size:13px; font-weight:600; color:#F0F6FB; background:transparent; }
-    QLabel#recChip { background:#304251; border-radius:2px; padding:2px 8px; color:#8EA6B9; font-size:11px; }
+    QLabel#recChip { background:#304251; border-radius:3px; padding:2px 8px; color:#8EA6B9; font-size:11px; }
     QLabel#recIcon { background:rgba(245,178,61,0.18); border-radius:8px; }
 
-    QFrame#emptyPanel { background:#1A232B; border:1px dashed rgba(255,255,255,0.10); border-radius:2px; }
+    QFrame#emptyPanel { background:rgba(0,0,0,0.22); border:0; border-radius:4px; }
     QLabel#emptyTitle { font-size:14px; font-weight:600; color:#F0F6FB; background:transparent; }
     QLabel#emptyBody { font-size:12px; color:#8EA6B9; background:transparent; }
     QLabel#emptyIcon { background:#304251; border-radius:26px; }
 
-    QFrame#footer { background:#0D1216; border-top:1px solid rgba(255,255,255,0.06); }
+    QFrame#footer { background:#0D1216; border:0; }
     QCheckBox#showChk { color:#7A93A7; font-size:11px; }
 )QSS";
 
@@ -313,8 +314,8 @@ QWidget* StartScreen::buildPanel(MainWindow* mw, std::function<void()> onChosen)
             if(!p.isEmpty()){ mw->openPath(p); if(onChosen) onChosen(); } });
     } else {
         auto* list=new QListWidget; list->setObjectName("startRecent");
-        list->setStyleSheet("QListWidget#startRecent{background:#1A232B;border:1px solid rgba(255,255,255,0.08);border-radius:2px;padding:6px;}"
-                            "QListWidget#startRecent::item{padding:8px 10px;border-radius:2px;color:#B8CEE0;}"
+        list->setStyleSheet("QListWidget#startRecent{background:#1A232B;border:0;border-radius:4px;padding:6px;}"
+                            "QListWidget#startRecent::item{padding:8px 10px;border-radius:3px;color:#B8CEE0;}"
                             "QListWidget#startRecent::item:hover{background:#212D37;}"
                             "QListWidget#startRecent::item:selected{background:rgba(184,206,224,0.24);color:#F0F6FB;}");
         for(const QString& p : recents){ QFileInfo fi(p);

@@ -9,7 +9,7 @@
 #include <functional>
 #include "canvas.h"
 
-class QButtonGroup; class QLabel; class QToolButton; class QScrollArea; class QTabWidget; class QMenuBar; class QStackedWidget;
+class QButtonGroup; class QLabel; class QToolButton; class QScrollArea; class QTabWidget; class QTabBar; class QMenuBar; class QStackedWidget;
 class QGraphicsOpacityEffect; class QPropertyAnimation;
 int runSelfTest();   // deterministic test harness (selftest.cpp); befriended so it can reach empty-state internals
 
@@ -134,7 +134,7 @@ private:
     std::function<void()> m_pokeRightPanel;   // reveal the auto-hide (show-on-hover) right panel programmatically
     bool m_gripDrag{false};
     void positionRightPanel();    // pin it to the right edge of the canvas, full height
-    QTabWidget* m_rpTabs{};
+    QTabBar* m_rpTabs{};          // Design | Prototype, on the panel's header strip
     CollapsibleSection* m_secProps{}; CollapsibleSection* m_secLayers{}; CollapsibleSection* m_secColour{};
     QScrollArea* m_designScroll{};
     void revealPanelSection(int which);   // 0=Properties 1=Layers 2=Colour: show the dock, Design tab, expand+scroll

@@ -1,4 +1,5 @@
 #include "panels.h"
+#include "shapes.h"
 #include "icons.h"
 #include "dialogs.h"
 #include <QtWidgets>
@@ -13,7 +14,7 @@ namespace xara {
 class ColorButton : public QPushButton {
     Q_OBJECT
 public:
-    explicit ColorButton(QWidget* p=nullptr):QPushButton(p){ setFixedSize(46,24); setCursor(Qt::PointingHandCursor);
+    explicit ColorButton(QWidget* p=nullptr):QPushButton(p){ setFixedSize(46,26); setCursor(Qt::PointingHandCursor);
         connect(this,&QPushButton::clicked,this,[this]{ QColor c=ColorEditor::pick(this,m_col); if(c.isValid()){ setColor(c); emit changed(c);} }); }
     void setColor(const QColor& c){ m_col=c; update(); }
     QColor color() const { return m_col; }
@@ -94,7 +95,7 @@ PropertiesPanel::PropertiesPanel(Canvas* c, QWidget* parent):QWidget(parent),m_c
       connect(m_fillRainbow,&QCheckBox::toggled,this,[this](bool b){ if(m_block)return; apply([&](Shape&s){ s.fill.rainbow=b; },"Rainbow"); });
       // 3/4-colour mesh corner colours
       m_meshRow=new QWidget; auto* mh=new QHBoxLayout(m_meshRow); mh->setContentsMargins(0,0,0,0); mh->setSpacing(4); mh->addWidget(new QLabel("Corners"));
-      for(int k=0;k<4;++k){ m_meshCol[k]=new ColorButton; m_meshCol[k]->setFixedSize(30,22); mh->addWidget(m_meshCol[k]);
+      for(int k=0;k<4;++k){ m_meshCol[k]=new ColorButton; m_meshCol[k]->setFixedSize(30,26); mh->addWidget(m_meshCol[k]);
         connect(m_meshCol[k],&ColorButton::changed,this,[this,k](QColor c){ if(m_block)return; apply([&](Shape&s){ if(s.fill.type==FillType::Mesh){ if(s.fill.meshColors.size()<4) s.fill.meshColors.resize(4); s.fill.meshColors[k]=c; } },"Mesh colour"); }); }
       mh->addStretch(); f->addWidget(m_meshRow);
       // bitmap fill: load image, tile, tint(contone)
@@ -239,11 +240,16 @@ void PropertiesPanel::refresh() {
 // ===== LayersPanel ==========================================================
 LayersPanel::LayersPanel(Canvas* c, QWidget* parent):QWidget(parent),m_c(c) {
     setObjectName("layersHost");   // compact-density QSS (shared with propsHost/colourHost)
-    auto* V=new QVBoxLayout(this); V->setContentsMargins(7,7,7,7); V->setSpacing(6);
+    auto* outer=new QVBoxLayout(this); outer->setContentsMargins(0,0,0,0); outer->setSpacing(0);
+    auto* V=new QVBoxLayout; V->setContentsMargins(7,7,7,7); V->setSpacing(6); outer->addLayout(V,1);
     auto* t=new QLabel("Objects"); t->setObjectName("panelTitle"); V->addWidget(t);
     m_list=new QListWidget; m_list->setSelectionMode(QAbstractItemView::ExtendedSelection); V->addWidget(m_list,1);
-    auto* row=new QHBoxLayout;
-    auto mk=[&](const QString& ic, const QString& tip, std::function<void()> fn){ auto* b=new QToolButton; b->setIcon(actionIcon(ic)); b->setToolTip(tip); b->setAutoRaise(true); connect(b,&QToolButton::clicked,this,[fn]{fn();}); row->addWidget(b); };
+    // The actions sit on a footer bar: a 26px shaded line along the card's foot, edge to edge, with faded
+    // 30×26 icon buttons that come up to full strength under the pointer.
+    auto* foot=new QWidget; foot->setObjectName("layersFoot"); foot->setAttribute(Qt::WA_StyledBackground,true); foot->setFixedHeight(26);
+    outer->addWidget(foot);
+    auto* row=new QHBoxLayout(foot); row->setContentsMargins(0,0,0,0); row->setSpacing(0);
+    auto mk=[&](const QString& ic, const QString& tip, std::function<void()> fn){ auto* b=new QToolButton; b->setObjectName("footIcon"); b->setFixedSize(30,26); b->setIcon(shapes::fadedIcon(actionIcon(ic),QSize(16,16))); b->setIconSize(QSize(16,16)); b->setToolTip(tip); b->setAutoRaise(true); connect(b,&QToolButton::clicked,this,[fn]{fn();}); row->addWidget(b); };
     mk("undo","Lower",[c]{c->lowerSelection();}); mk("redo","Raise",[c]{c->raiseSelection();});
     mk("dup","Duplicate",[c]{c->duplicateSelection();}); mk("group","Group",[c]{c->groupSelection();});
     mk("delete","Delete",[c]{c->deleteSelection();}); row->addStretch(); V->addLayout(row);
