@@ -1,7 +1,9 @@
 // prepress.h — print/interop importers & exporters (Module 3): EPS/AI + PDF vector
 // import, PSD flattened import, CMYK colour separations, crop/registration marks.
 #pragma once
+#include <QHash>
 #include <QMap>
+#include <QStringList>
 #include "model.h"
 #include <QByteArray>
 #include <QImage>
@@ -115,6 +117,18 @@ Document importAseDocument(const QByteArray& data, AseImportStats* stats = nullp
 struct DwfImportStats { int pages = 0, objects = 0, texts = 0, images = 0, skipped = 0, unknownOpcodes = 0, lzCompressed = 0, models3d = 0; };
 Document importDwfDocument(const QByteArray& data, const QMap<QString, QByteArray>& zip, DwfImportStats* stats = nullptr);
 QByteArray dwfZlibDictionary();                                  // the preset dictionary of W2D's zlib blocks
+
+// DrawingML (Office Open XML): PowerPoint slides as pages, with their masters, layouts, themes, preset and custom
+// shapes, fills, lines, text, pictures, tables and SmartArt; and the drawings of Excel sheets, a page a sheet.
+// `zip` is the package's entries. Charts aren't drawn.
+struct DmlImportStats { int pages = 0, shapes = 0, pictures = 0, texts = 0, charts = 0, smartArt = 0, unknownPresets = 0, missingPictures = 0; };
+Document importPptxDocument(const QMap<QString, QByteArray>& zip, DmlImportStats* stats = nullptr);
+Document importXlsxDrawings(const QMap<QString, QByteArray>& zip, DmlImportStats* stats = nullptr);
+// A Word document laid out down its pages: paragraphs as text frames, tables, and its drawings (shapes, text boxes,
+// pictures, groups) where they're anchored.
+Document importDocxDocument(const QMap<QString, QByteArray>& zip, DmlImportStats* stats = nullptr);
+QPainterPath dmlPresetPath(const QString& name, double w, double h, const QHash<QString, QString>& adjust = {});   // the outline of a preset shape
+QStringList dmlPresetNames();
 
 // Text-mode art (ANSI/ASCII .ans .asc .nfo .diz, .bin, XBin .xb, ArtWorx .adf, iCE Draw .idf, PCBoard .pcb,
 // TundraDraw .tnd) drawn with its font, as one picture; SAUCE metadata when the file has it.

@@ -1681,6 +1681,8 @@ bool Canvas::dropImportByExtension(const QString& p){
     if(ends(".ani"))  return importAni(p);
     if(ends(".aseprite")||ends(".ase")) return importAse(p);
     if(ends(".dwf"))  return importDwf(p);
+    if(ends(".pptx")||ends(".ppsx")||ends(".potx")||ends(".pptm")||ends(".ppsm")||ends(".potm")||
+       ends(".xlsx")||ends(".xlsm")||ends(".xltx")||ends(".xltm")) return importOfficeDrawing(p);
     if(ends(".dwfx")) return importXps(p);
     if(ends(".ans")||ends(".asc")||ends(".nfo")||ends(".diz")||ends(".ice")||ends(".xb")||ends(".adf")||ends(".idf")||ends(".pcb")||ends(".tnd")) return importTextArt(p);
     if(ends(".bin")){ QFile f(p); if(f.open(QIODevice::ReadOnly) && f.size()<=(qint64(4)<<20)){ const QByteArray d=f.readAll();   // a raw text screen: SAUCE-tagged or whole 80-column rows

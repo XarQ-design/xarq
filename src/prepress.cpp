@@ -864,14 +864,27 @@ Document importEmf(const QByteArray& data){
     struct WObj{ bool used=false, isPen=false, none=false; QColor color=Qt::black; double w=1; };
     QHash<int,WObj> objs;
     QColor curPen(Qt::black), curBrush(Qt::white); double curPenW=1; bool penNone=false, brushNone=false;
-    QPolygonF line;
-    auto addShape=[&](const QPainterPath& pp, bool fill){
-        if(pp.elementCount()==0) return; Shape s; s.type=ShapeType::Path; s.path=pp;
+    Qt::FillRule fillRule=Qt::OddEvenFill;
+    QPainterPath line;                                  // the open figure built by MOVETOEX / LINETO / ...TO records
+    bool inPath=false; QPainterPath bracket;            // BEGINPATH .. ENDPATH: figures gathered for FILL/STROKEPATH
+    auto addShape=[&](const QPainterPath& ppIn, bool fill){
+        if(ppIn.elementCount()==0) return;
+        if(inPath){ bracket.addPath(ppIn); return; }
+        QPainterPath pp=ppIn; pp.setFillRule(fillRule);
+        Shape s; s.type=ShapeType::Path; s.path=pp; s.fillRule=fillRule;
         if(fill && !brushNone){ s.fill.type=FillType::Solid; s.fill.color=curBrush; } else s.fill.type=FillType::None;
         if(!penNone){ s.stroke.enabled=true; s.stroke.color=curPen; s.stroke.width=qMax(0.2,curPenW); } else s.stroke.enabled=false;
         if(s.fill.type==FillType::None && !s.stroke.enabled) return;
         doc.shapes.push_back(s); };
-    auto flushLine=[&](){ if(line.size()>=2){ QPainterPath pp; pp.addPolygon(line); addShape(pp,false); } line.clear(); };
+    auto flushLine=[&](){ if(inPath){ bracket.addPath(line); line=QPainterPath(); return; } if(line.elementCount()>=2) addShape(line,false); line=QPainterPath(); };
+    auto lineFrom=[&](){ if(line.elementCount()==0){ line.moveTo(0,0); } };
+    // Points of a record: 32-bit POINTL or 16-bit POINTS, `cnt` of them from `at`, as many as fit before `end`.
+    auto points=[&](int at, int cnt, bool p16, quint64 end){
+        QPolygonF poly; const int step=p16?4:8; const int fit=int((end>quint64(at)? end-quint64(at) : 0)/quint64(step));
+        cnt=qBound(0, cnt, qMin(1<<20, fit));
+        for(int k=0;k<cnt;++k){ const int o=at+k*step; poly<<(p16? QPointF(s16(o), s16(o+2)) : QPointF(s32(o), s32(o+4))); }
+        return poly; };
+    auto bezierPath=[&](QPainterPath& pp, const QPolygonF& q, int from){ for(int k=from; k+2<q.size(); k+=3) pp.cubicTo(q[k], q[k+1], q[k+2]); };
 
     int off=0, guard=0;
     while(off+8<=n && guard++<500000){
@@ -880,8 +893,34 @@ Document importEmf(const QByteArray& data){
         const int pr=off+8;
         switch(type){
             case 14: off=n; break;                                                            // EMR_EOF
-            case 27: flushLine(); line.clear(); line<<QPointF(s32(pr), s32(pr+4)); break;      // MOVETOEX (POINTL)
-            case 54: line<<QPointF(s32(pr), s32(pr+4)); break;                                 // LINETO
+            case 27: if(!inPath) flushLine(); line.moveTo(s32(pr), s32(pr+4)); break;            // MOVETOEX (POINTL)
+            case 54: lineFrom(); line.lineTo(s32(pr), s32(pr+4)); break;                        // LINETO
+            case 19: fillRule = u32(pr)==2 ? Qt::WindingFill : Qt::OddEvenFill; break;         // SETPOLYFILLMODE
+            case 2: case 85: {                                                                // POLYBEZIER / POLYBEZIER16
+                const bool p16=type==85; const QPolygonF q=points(pr+20, int(u32(pr+16)), p16, quint64(off)+size);
+                if(q.size()>=4){ QPainterPath pp(q[0]); bezierPath(pp, q, 1); addShape(pp,false); } } break;
+            case 5: case 88: case 6: case 89: {                                               // POLYBEZIERTO / POLYLINETO (32 and 16)
+                const bool p16=(type==88||type==89); const QPolygonF q=points(pr+20, int(u32(pr+16)), p16, quint64(off)+size);
+                lineFrom();
+                if(type==5||type==88) bezierPath(line, q, 0); else for(const QPointF& pt : q) line.lineTo(pt); } break;
+            case 7: case 8: case 90: case 91: {                                               // POLYPOLYLINE / POLYPOLYGON (32 and 16)
+                const bool p16=(type==90||type==91), polygon=(type==8||type==91);
+                const int nPolys=qBound(0, int(u32(pr+16)), 1<<16);
+                const quint64 end=quint64(off)+size; int at=pr+24+nPolys*4;
+                if(quint64(at)>end) break;
+                QPainterPath pp;
+                for(int k=0;k<nPolys;++k){ const QPolygonF q=points(at, int(u32(pr+24+k*4)), p16, end); at+=int(q.size())*(p16?4:8);
+                    if(q.size()<2) continue; pp.addPolygon(q); if(polygon) pp.closeSubpath(); }
+                addShape(pp, polygon); } break;
+            case 95: { int ih=int(u32(pr)); const quint32 style=u32(pr+20);                   // EXTCREATEPEN: ih, offsets, then style, width, brush style, colour
+                WObj o; o.used=true; o.isPen=true; o.w=s32(pr+24); o.color=colorAt(pr+32); o.none=((style&0xF)==5) || u32(pr+28)==1; objs.insert(ih,o); } break;
+            case 59: flushLine(); inPath=true; bracket=QPainterPath(); break;                 // BEGINPATH
+            case 60: if(inPath){ bracket.addPath(line); line=QPainterPath(); } inPath=false; break;   // ENDPATH
+            case 61: line.closeSubpath(); break;                                               // CLOSEFIGURE
+            case 62: case 63: case 64: {                                                      // FILLPATH / STROKEANDFILLPATH / STROKEPATH
+                QPainterPath pp=bracket; pp.addPath(line); line=QPainterPath(); bracket=QPainterPath(); inPath=false;
+                const bool keepPen=penNone; if(type==62) penNone=true;
+                addShape(pp, type!=64); penNone=keepPen; } break;
             case 43: { double l=s32(pr),t=s32(pr+4),r=s32(pr+8),b=s32(pr+12);                  // RECTANGLE (rclBox l,t,r,b)
                 QPainterPath pp; pp.addPolygon(QPolygonF()<<QPointF(l,t)<<QPointF(r,t)<<QPointF(r,b)<<QPointF(l,b)); pp.closeSubpath();
                 addShape(pp,true); } break;

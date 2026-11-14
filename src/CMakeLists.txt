@@ -111,6 +111,7 @@ add_executable(xarq
     textures.cpp
     ansiart.cpp
     dwfimport.cpp
+    drawingml.cpp
     xcfimport.cpp
     kraimport.cpp
     oraimport.cpp

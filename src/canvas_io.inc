@@ -435,6 +435,12 @@ bool Canvas::importDocx(const QString& path){
     const QMap<QString,QByteArray> zip=readZipEntries(data);
     const QByteArray xml = zip.value("word/document.xml");
     if(xml.isEmpty()){ emit statusMessage("Not a readable .docx (no word/document.xml)."); return false; }
+    if(xml.contains(":drawing>") || xml.contains(":drawing ")){                 // drawings: lay the document out down its pages with them
+        DmlImportStats st; const Document pd=importDocxDocument(zip,&st);
+        QStringList notes; if(st.pages>1) notes<<QString("%1 pages").arg(st.pages); if(st.charts) notes<<QString("%1 chart(s) left out").arg(st.charts);
+        if(st.missingPictures) notes<<QString("%1 picture(s) in formats XarQ can't read").arg(st.missingPictures);
+        if(adoptLayers(pd,path,"Import DOCX",notes.join(QStringLiteral(", ")))) return true;
+    }
     QString text; QXmlStreamReader r(xml);
     while(!r.atEnd()){ r.readNext();
         if(r.isStartElement()){
@@ -1024,6 +1030,22 @@ bool Canvas::importDwf(const QString& path){
     if(adoptLayers(pd,path,"Import DWF",notes.join(QStringLiteral(", ")))) return true;
     if(st.models3d || zip.keys().join(' ').contains(".w3d",Qt::CaseInsensitive)) emit statusMessage("This DWF holds a 3D model (W3D), which XarQ doesn't read.");
     else emit statusMessage("No readable drawing found in the DWF file.");
+    return false;
+}
+bool Canvas::importOfficeDrawing(const QString& path){
+    QFile f(path); if(!f.open(QIODevice::ReadOnly)) return false;
+    const QMap<QString,QByteArray> zip=readZipEntries(f.readAll()); f.close();
+    if(zip.isEmpty()){ emit statusMessage("Not a readable Office file."); return false; }
+    const bool sheet=zip.contains("xl/workbook.xml")||path.endsWith(".xlsx",Qt::CaseInsensitive)||path.endsWith(".xlsm",Qt::CaseInsensitive);
+    DmlImportStats st;
+    const Document pd=sheet ? importXlsxDrawings(zip,&st) : importPptxDocument(zip,&st);
+    QStringList notes;
+    if(st.pages>1) notes<<QString(sheet ? "%1 sheets" : "%1 slides").arg(st.pages);
+    if(st.charts) notes<<QStringLiteral("%1 chart(s) left out").arg(st.charts);
+    if(st.missingPictures) notes<<QStringLiteral("%1 picture(s) in formats XarQ can't read").arg(st.missingPictures);
+    if(adoptLayers(pd,path,sheet ? "Import Excel drawings" : "Import PowerPoint",notes.join(QStringLiteral(", ")))) return true;
+    emit statusMessage(sheet ? (st.charts ? "This workbook's drawings are charts, which XarQ doesn't draw yet." : "This workbook has no drawings to bring in.")
+                             : "No slides found in the presentation.");
     return false;
 }
 bool Canvas::importPxd(const QString& path){

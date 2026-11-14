@@ -13281,6 +13281,133 @@ if(xara::pdfVectorAvailable()){
       check(xp.size()==2 && xp[0].contains("viewBox='0 0 200 50'") && xp[1].contains("viewBox='0 0 100 50'"), "DWFx: every XPS page, in the document's reading order");
     }
 
+    // --- DrawingML (Office shapes) ---
+    std::printf("[interop] DrawingML\n");
+    {
+      check(dmlPresetNames().size()==187, "DrawingML: all 187 preset shapes of ECMA-376");
+      check(dmlPresetPath("rect",100,50).boundingRect()==QRectF(0,0,100,50) && dmlPresetPath("nosuchshape",10,10).isEmpty(), "DrawingML: a rectangle preset, and nothing for an unknown name");
+      const QPainterPath tri=dmlPresetPath("triangle",100,50);
+      check(tri.contains(QPointF(50,30)) && !tri.contains(QPointF(5,5)) && !tri.contains(QPointF(95,5)), "DrawingML: a triangle's apex from its adjust value");
+      const QPainterPath tri2=dmlPresetPath("triangle",100,50,{{"adj","val 0"}});
+      check(tri2.contains(QPointF(5,10)) && !tri2.contains(QPointF(95,10)), "DrawingML: an adjust value overrides the preset's default");
+      // The arc preset's angles are as seen on the ellipse: 270 to 0 degrees is its upper right quarter.
+      const QRectF arc=dmlPresetPath("arc",100,50).boundingRect();
+      check(qAbs(arc.left()-50)<0.5 && qAbs(arc.right()-100)<0.5 && qAbs(arc.top())<0.5 && qAbs(arc.bottom()-25)<0.5, "DrawingML: arcs turn the right way between angles seen on the ellipse");
+      check(!dmlPresetPath("roundRect",100,100).contains(QPointF(1,1)) && dmlPresetPath("roundRect",100,100).contains(QPointF(50,1)), "DrawingML: rounded corners from guide formulas");
+
+      const QString ns="xmlns:a=\"http://schemas.openxmlformats.org/drawingml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\" xmlns:p=\"http://schemas.openxmlformats.org/presentationml/2006/main\"";
+      auto rels=[](const QList<QStringList>& items){ QString r="<Relationships xmlns=\"http://schemas.openxmlformats.org/package/2006/relationships\">";
+        for(const QStringList& i : items) r+=QString("<Relationship Id=\"%1\" Type=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships/%2\" Target=\"%3\"/>").arg(i[0],i[1],i[2]);
+        return (r+"</Relationships>").toUtf8(); };
+      const QByteArray themeXml=QString("<a:theme "+ns+"><a:themeElements><a:clrScheme name=\"c\"><a:dk1><a:srgbClr val=\"000000\"/></a:dk1><a:lt1><a:srgbClr val=\"FFFFFF\"/></a:lt1>"
+        "<a:dk2><a:srgbClr val=\"222222\"/></a:dk2><a:lt2><a:srgbClr val=\"EEEEEE\"/></a:lt2><a:accent1><a:srgbClr val=\"4080C0\"/></a:accent1></a:clrScheme>"
+        "<a:fontScheme name=\"f\"><a:majorFont><a:latin typeface=\"DejaVu Sans\"/></a:majorFont><a:minorFont><a:latin typeface=\"DejaVu Sans\"/></a:minorFont></a:fontScheme></a:themeElements></a:theme>").toUtf8();
+      QImage px(4,2,QImage::Format_ARGB32); px.fill(Qt::blue); px.setPixel(0,0,qRgb(255,0,0)); px.setPixel(0,1,qRgb(255,0,0));
+      QByteArray png; { QBuffer b(&png); b.open(QIODevice::WriteOnly); px.save(&b,"PNG"); }
+      QMap<QString,QByteArray> pz;
+      pz.insert("_rels/.rels", rels({{"rId1","officeDocument","ppt/presentation.xml"}}));
+      pz.insert("ppt/presentation.xml", QString("<p:presentation "+ns+"><p:sldIdLst><p:sldId id=\"256\" r:id=\"rId2\"/></p:sldIdLst><p:sldSz cx=\"9144000\" cy=\"6858000\"/></p:presentation>").toUtf8());
+      pz.insert("ppt/_rels/presentation.xml.rels", rels({{"rId2","slide","slides/slide1.xml"}}));
+      pz.insert("ppt/slides/_rels/slide1.xml.rels", rels({{"rId1","slideLayout","../slideLayouts/slideLayout1.xml"},{"rId2","image","../media/image1.png"}}));
+      pz.insert("ppt/slideLayouts/slideLayout1.xml", QString("<p:sldLayout "+ns+"><p:cSld><p:spTree/></p:cSld></p:sldLayout>").toUtf8());
+      pz.insert("ppt/slideLayouts/_rels/slideLayout1.xml.rels", rels({{"rId1","slideMaster","../slideMasters/slideMaster1.xml"}}));
+      pz.insert("ppt/slideMasters/slideMaster1.xml", QString("<p:sldMaster "+ns+"><p:cSld><p:bg><p:bgPr><a:solidFill><a:schemeClr val=\"lt2\"/></a:solidFill></p:bgPr></p:bg><p:spTree/></p:cSld>"
+        "<p:clrMap bg1=\"lt1\" tx1=\"dk1\" bg2=\"lt2\" tx2=\"dk2\" accent1=\"accent1\"/><p:txStyles><p:otherStyle><a:lvl1pPr><a:defRPr sz=\"1800\"/></a:lvl1pPr></p:otherStyle></p:txStyles></p:sldMaster>").toUtf8());
+      pz.insert("ppt/slideMasters/_rels/slideMaster1.xml.rels", rels({{"rId1","theme","../theme/theme1.xml"}}));
+      pz.insert("ppt/theme/theme1.xml", themeXml);
+      pz.insert("ppt/media/image1.png", png);
+      pz.insert("ppt/slides/slide1.xml", QString("<p:sld "+ns+"><p:cSld><p:spTree>"
+        // a rectangle in the theme's accent, three quarters as light, with two paragraphs (the second bulleted)
+        "<p:sp><p:nvSpPr><p:cNvPr id=\"2\" name=\"Box\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x=\"952500\" y=\"952500\"/><a:ext cx=\"1905000\" cy=\"952500\"/></a:xfrm>"
+        "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom><a:solidFill><a:schemeClr val=\"accent1\"><a:lumMod val=\"75000\"/></a:schemeClr></a:solidFill></p:spPr>"
+        "<p:txBody><a:bodyPr/><a:p><a:r><a:rPr sz=\"2400\"/><a:t>Hello</a:t></a:r></a:p><a:p><a:pPr marL=\"285750\" indent=\"-285750\"><a:buChar char=\"&#8226;\"/></a:pPr><a:r><a:t>Item</a:t></a:r></a:p></p:txBody></p:sp>"
+        // a group whose children live in a space a thousand times smaller: their line stays 1pt
+        "<p:grpSp><p:nvGrpSpPr><p:cNvPr id=\"3\" name=\"G\"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr><p:grpSpPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"952500\" cy=\"952500\"/><a:chOff x=\"0\" y=\"0\"/><a:chExt cx=\"952\" cy=\"952\"/></a:xfrm></p:grpSpPr>"
+        "<p:sp><p:nvSpPr><p:cNvPr id=\"4\" name=\"Line\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"952\" cy=\"476\"/></a:xfrm><a:prstGeom prst=\"line\"><a:avLst/></a:prstGeom>"
+        "<a:ln w=\"12700\"><a:solidFill><a:srgbClr val=\"FF0000\"/></a:solidFill><a:tailEnd type=\"triangle\"/></a:ln></p:spPr></p:sp></p:grpSp>"
+        // a 2 x 1 table and a picture with its left half cropped away
+        "<p:graphicFrame><p:nvGraphicFramePr><p:cNvPr id=\"5\" name=\"T\"/><p:cNvGraphicFramePr/><p:nvPr/></p:nvGraphicFramePr><p:xfrm><a:off x=\"0\" y=\"3810000\"/><a:ext cx=\"1905000\" cy=\"381000\"/></p:xfrm>"
+        "<a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/table\"><a:tbl><a:tblGrid><a:gridCol w=\"952500\"/><a:gridCol w=\"952500\"/></a:tblGrid>"
+        "<a:tr h=\"381000\"><a:tc><a:txBody><a:p><a:r><a:t>A1</a:t></a:r></a:p></a:txBody></a:tc><a:tc><a:txBody><a:p><a:r><a:t>B1</a:t></a:r></a:p></a:txBody><a:tcPr><a:solidFill><a:srgbClr val=\"00FF00\"/></a:solidFill></a:tcPr></a:tc></a:tr></a:tbl></a:graphicData></a:graphic></p:graphicFrame>"
+        "<p:pic><p:nvPicPr><p:cNvPr id=\"6\" name=\"Pic\"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr><p:blipFill><a:blip r:embed=\"rId2\"/><a:srcRect l=\"50000\"/></p:blipFill>"
+        "<p:spPr><a:xfrm><a:off x=\"4762500\" y=\"0\"/><a:ext cx=\"952500\" cy=\"952500\"/></a:xfrm><a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></p:spPr></p:pic>"
+        "</p:spTree></p:cSld></p:sld>").toUtf8());
+      DmlImportStats ds; const Document pd=importPptxDocument(pz,&ds);
+      check(pd.pageCount==1 && pd.pageSize==QSizeF(960,720), "DrawingML: a PowerPoint slide on a page of the slide's size");
+      QVector<Shape> flat; std::function<void(const QVector<Shape>&)> flatten=[&](const QVector<Shape>& v){ for(const Shape& x : v){ if(x.type==ShapeType::Group) flatten(x.children); else flat<<x; } };
+      flatten(pd.shapes);
+      bool bg=false, box=false, line=false, hello=false, bullet=false, table=false, pic=false;
+      for(const Shape& x : flat){
+        if(x.name=="Background" && x.fill.color==QColor(0xEE,0xEE,0xEE)) bg=true;
+        if(x.type==ShapeType::Path && x.name=="Box" && x.path.boundingRect()==QRectF(100,100,200,100)) box = x.fill.color==QColor::fromHslF(QColor(0x40,0x80,0xC0).hslHueF(), QColor(0x40,0x80,0xC0).hslSaturationF(), QColor(0x40,0x80,0xC0).lightnessF()*0.75);
+        if(x.type==ShapeType::Path && x.name=="Line" && x.stroke.enabled) line = qAbs(x.stroke.width-96.0/72)<0.01 && x.stroke.color==QColor(255,0,0) && x.stroke.endArrow==-2 && qAbs(x.path.boundingRect().width()-100)<0.5;
+        if(x.type==ShapeType::Text && x.text=="Hello") hello = x.font.pixelSize()==32;
+        if(x.type==ShapeType::Text && x.text==QString::fromUtf8("•")) bullet=true;
+        if(x.type==ShapeType::Table) table = x.table.cols()==2 && x.table.cells.value(0).text=="A1" && x.table.cells.value(1).bg==QColor(0,255,0);
+        if(x.type==ShapeType::Rect && x.fill.type==FillType::Bitmap) pic = x.fill.image.width()==2 && QColor(x.fill.image.pixel(0,0))==QColor(0,0,255);
+      }
+      check(bg, "DrawingML: the master's background in its theme colour");
+      check(box, "DrawingML: a theme colour with its luminance modifier");
+      check(line, "DrawingML: line widths keep their size inside a scaled group, arrowheads come along");
+      check(hello && bullet, "DrawingML: text in points, and a bullet hung in front of its paragraph");
+      check(table && pic, "DrawingML: tables as tables, pictures cropped as the file says");
+
+      // Excel: a shape anchored from cell B3 to D5 lands where those cells are, at the default sizes.
+      QMap<QString,QByteArray> xz;
+      xz.insert("_rels/.rels", rels({{"rId1","officeDocument","xl/workbook.xml"}}));
+      xz.insert("xl/workbook.xml", QByteArray("<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"Data\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>"));
+      xz.insert("xl/_rels/workbook.xml.rels", rels({{"rId1","worksheet","worksheets/sheet1.xml"}}));
+      xz.insert("xl/worksheets/sheet1.xml", QByteArray("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData/></worksheet>"));
+      xz.insert("xl/worksheets/_rels/sheet1.xml.rels", rels({{"rId1","drawing","../drawings/drawing1.xml"}}));
+      xz.insert("xl/drawings/drawing1.xml", QString("<xdr:wsDr xmlns:xdr=\"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing\" "+ns+"><xdr:twoCellAnchor>"
+        "<xdr:from><xdr:col>1</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>2</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:from><xdr:to><xdr:col>3</xdr:col><xdr:colOff>0</xdr:colOff><xdr:row>4</xdr:row><xdr:rowOff>0</xdr:rowOff></xdr:to>"
+        "<xdr:sp><xdr:nvSpPr><xdr:cNvPr id=\"2\" name=\"Oval\"/><xdr:cNvSpPr/></xdr:nvSpPr><xdr:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"100\" cy=\"100\"/></a:xfrm><a:prstGeom prst=\"ellipse\"><a:avLst/></a:prstGeom>"
+        "<a:solidFill><a:srgbClr val=\"FFC000\"/></a:solidFill></xdr:spPr></xdr:sp><xdr:clientData/></xdr:twoCellAnchor></xdr:wsDr>").toUtf8());
+      const Document xd=importXlsxDrawings(xz);
+      QVector<Shape> xs; flat.clear(); flatten(xd.shapes); xs=flat;
+      check(xd.pageCount==1 && xs.size()==1 && xs[0].path.boundingRect().toRect()==QRect(64,40,128,40) && xd.shapes.value(0).name=="Data", "DrawingML: an Excel drawing anchored between cells, a page a sheet");
+
+      // Word: an inline picture in the text's flow and a shape with a text box placed against the page.
+      const QString wns="xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\" xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\" "+ns;
+      QMap<QString,QByteArray> wz;
+      wz.insert("_rels/.rels", rels({{"rId1","officeDocument","word/document.xml"}}));
+      wz.insert("word/_rels/document.xml.rels", rels({{"rId5","image","media/p.png"}}));
+      wz.insert("word/media/p.png", png);
+      wz.insert("word/document.xml", QString("<w:document "+wns+"><w:body>"
+        "<w:p><w:r><w:t>Title</w:t></w:r></w:p>"
+        "<w:p><w:r><w:drawing><wp:inline><wp:extent cx=\"952500\" cy=\"476250\"/><wp:docPr id=\"1\" name=\"Inline\"/><a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/picture\">"
+        "<pic:pic><pic:nvPicPr><pic:cNvPr id=\"1\" name=\"Inline\"/><pic:cNvPicPr/></pic:nvPicPr><pic:blipFill><a:blip r:embed=\"rId5\"/></pic:blipFill><pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"952500\" cy=\"476250\"/></a:xfrm><a:prstGeom prst=\"rect\"/></pic:spPr></pic:pic>"
+        "</a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>"
+        "<w:p><w:r><w:drawing><wp:anchor behindDoc=\"0\"><wp:simplePos x=\"0\" y=\"0\"/><wp:positionH relativeFrom=\"page\"><wp:posOffset>2857500</wp:posOffset></wp:positionH><wp:positionV relativeFrom=\"page\"><wp:posOffset>4762500</wp:posOffset></wp:positionV>"
+        "<wp:extent cx=\"1905000\" cy=\"952500\"/><wp:docPr id=\"2\" name=\"Note\"/><a:graphic><a:graphicData uri=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\"><wps:wsp><wps:cNvSpPr/>"
+        "<wps:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"1905000\" cy=\"952500\"/></a:xfrm><a:prstGeom prst=\"rect\"/><a:solidFill><a:srgbClr val=\"FFFF00\"/></a:solidFill></wps:spPr>"
+        "<wps:txbx><w:txbxContent><w:p><w:r><w:t>Inside</w:t></w:r></w:p></w:txbxContent></wps:txbx><wps:bodyPr/></wps:wsp></a:graphicData></a:graphic></wp:anchor></w:drawing></w:r></w:p>"
+        "<w:sectPr><w:pgSz w:w=\"12240\" w:h=\"15840\"/><w:pgMar w:top=\"1440\" w:bottom=\"1440\" w:left=\"1440\" w:right=\"1440\"/></w:sectPr></w:body></w:document>").toUtf8());
+      DmlImportStats wst; const Document wdoc=importDocxDocument(wz,&wst);
+      flat.clear(); flatten(wdoc.shapes);
+      bool title=false, inl=false, note=false, inside=false;
+      for(const Shape& x : flat){
+        if(x.type==ShapeType::Text && x.text=="Title") title = qAbs(x.transform.dx()-96)<0.5 && qAbs(x.transform.dy()-96)<0.5;
+        if(x.type==ShapeType::Rect && x.fill.type==FillType::Bitmap) inl = qAbs(x.transform.map(QPointF(0,0)).x()-96)<0.5 && x.transform.mapRect(x.rect).toRect().size()==QSize(100,50);
+        if(x.type==ShapeType::Path && x.fill.color==QColor(255,255,0)) note = x.path.boundingRect().toRect()==QRect(300,500,200,100);
+        if(x.type==ShapeType::Text && x.text=="Inside") inside = QRectF(300,500,200,100).contains(x.transform.map(QPointF(1,1)));
+      }
+      check(wdoc.pageCount==1 && wdoc.pageSize==QSizeF(816,1056) && title, "DrawingML: a Word page at its size, text from the top margin");
+      check(inl, "DrawingML: a Word inline picture in the text's flow");
+      check(note && inside, "DrawingML: a Word shape anchored to the page, with its text box's paragraphs inside");
+
+      // EMF pictures in Office files often hold poly-polygons: two squares, one record.
+      QByteArray emf(88,'\0'); auto put32=[&](QByteArray& b, int at, quint32 v){ for(int i=0;i<4;++i) b[at+i]=char((v>>(8*i))&0xff); };
+      put32(emf,0,1); put32(emf,4,88); emf.replace(40,4," EMF");
+      QByteArray rec; auto add32=[&](quint32 v){ for(int i=0;i<4;++i) rec.append(char((v>>(8*i))&0xff)); }; auto add16=[&](qint16 v){ rec.append(char(v&0xff)); rec.append(char((v>>8)&0xff)); };
+      add32(91); add32(0); for(int i=0;i<4;++i) add32(0); add32(2); add32(8); add32(4); add32(4);
+      for(int k=0;k<2;++k){ const qint16 o=qint16(k*20); add16(o); add16(o); add16(o+10); add16(o); add16(o+10); add16(o+10); add16(o); add16(o+10); }
+      put32(rec,4,quint32(rec.size()));
+      QByteArray eof; eof.append(char(14)); eof.append(QByteArray(3,'\0')); eof.append(char(20)); eof.append(QByteArray(15,'\0'));
+      const Document em=importEmf(emf+rec+eof);
+      check(em.shapes.size()==1 && em.shapes[0].path.boundingRect().toRect()==QRect(0,0,30,30), "EMF: poly-polygons, as Office pictures use them");
+    }
+
     // --- GPU textures ---
     std::printf("[interop] GPU textures\n");
     {
