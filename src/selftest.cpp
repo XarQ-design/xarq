@@ -12,6 +12,9 @@
 #include <QDir>
 #include <QFontDatabase>
 #include <QBuffer>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QStringDecoder>
 #include <QMovie>
 #include <QFileInfo>
