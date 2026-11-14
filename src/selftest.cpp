@@ -13487,6 +13487,26 @@ if(xara::pdfVectorAvailable()){
       check(importSwfDocument("FWS").shapes.isEmpty() && importSwfDocument(QByteArray("CWS\x0a\x40\x00\x00\x00garbage", 15)).shapes.isEmpty(), "SWF: cut-short and broken movies give nothing");
     }
 
+    // --- STEP / IGES ---
+    std::printf("[interop] STEP / IGES\n");
+    {
+      const QString step = QDir::temp().filePath(QStringLiteral("xarq_selftest_%1.step").arg(QCoreApplication::applicationPid()));
+      if(cadWriteTestStep(step)){
+        CadImportStats cs; const Document cd = importCadDocument(step, &cs);
+        QFile::remove(step);
+        check(cd.pageCount == 4 && cs.solid && cs.views == 4 && cd.shapes.size() == 4 && cd.shapes[0].name == "Isometric" && cd.shapes[1].name == "Front",
+              "STEP: a solid model as four views, a page each");
+        // The front view of the 100 x 40 block: its visible outline keeps the proportions; the hole's walls are hidden.
+        QRectF front; bool hidden = false;
+        for(const Shape& x : cd.shapes.value(1).children){ if(x.type == ShapeType::Path && x.name == "Visible") front = x.path.boundingRect(); if(x.type == ShapeType::Group && x.name == "Hidden lines" && !x.children.isEmpty() && x.children[0].stroke.dashes.size() == 2) hidden = true; }
+        check(front.height() > 0 && qAbs(front.width() / front.height() - 2.5) < 0.02 && hidden, "STEP: hidden-line removal, the hidden edges dashed");
+      } else {
+        CadImportStats cs; importCadDocument(QStringLiteral("/nonexistent.step"), &cs);
+        check(cs.unavailable, "STEP: without Open CASCADE the reader says so");
+      }
+      CadImportStats bad; check(importCadDocument(QStringLiteral("/nonexistent/none.igs"), &bad).shapes.isEmpty(), "STEP / IGES: a missing file gives nothing");
+    }
+
     // --- GPU textures ---
     std::printf("[interop] GPU textures\n");
     {

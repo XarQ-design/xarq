@@ -135,6 +135,12 @@ QStringList dmlPresetNames();
 struct SwfImportStats { int frames = 0, shapes = 0, texts = 0, skipped = 0, missingBitmaps = 0, version = 0; double frameRate = 0; bool lzma = false; };
 Document importSwfDocument(const QByteArray& data, SwfImportStats* stats = nullptr);
 
+// STEP and IGES through Open CASCADE (when built with it): a flat drawing as its edges, a solid model as four
+// pages of views (isometric, front, top, right) with hidden lines dashed.
+struct CadImportStats { int views = 0, edges = 0; bool solid = false, unavailable = false; };
+Document importCadDocument(const QString& path, CadImportStats* stats = nullptr);
+bool cadWriteTestStep(const QString& path);                      // self-test: a holed block written as STEP (false without OCCT)
+
 // Text-mode art (ANSI/ASCII .ans .asc .nfo .diz, .bin, XBin .xb, ArtWorx .adf, iCE Draw .idf, PCBoard .pcb,
 // TundraDraw .tnd) drawn with its font, as one picture; SAUCE metadata when the file has it.
 struct TextArt { QImage image; QString title, author, group; int columns = 0, rows = 0; };

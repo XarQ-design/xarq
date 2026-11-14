@@ -1048,6 +1048,17 @@ bool Canvas::importOfficeDrawing(const QString& path){
                              : "No slides found in the presentation.");
     return false;
 }
+bool Canvas::importCad(const QString& path){
+    CadImportStats st;
+    emit statusMessage("Reading the CAD model…");
+    const Document pd=importCadDocument(path,&st);
+    if(st.unavailable){ emit statusMessage("This build of XarQ has no STEP/IGES reader (Open CASCADE)."); return false; }
+    QStringList notes;
+    if(st.solid) notes<<QStringLiteral("%1 views of the model, hidden lines dashed").arg(st.views);
+    if(adoptLayers(pd,path,"Import CAD",notes.join(QStringLiteral(", ")))) return true;
+    emit statusMessage("No readable geometry found in the CAD file.");
+    return false;
+}
 bool Canvas::importPxd(const QString& path){
     QMap<QString,QByteArray> files;
     const QFileInfo info(path);

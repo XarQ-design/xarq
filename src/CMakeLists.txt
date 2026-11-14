@@ -113,6 +113,7 @@ add_executable(xarq
     dwfimport.cpp
     drawingml.cpp
     swfimport.cpp
+    cadimport.cpp
     xcfimport.cpp
     kraimport.cpp
     oraimport.cpp
@@ -238,6 +239,34 @@ if(LIBLZMA_FOUND)
     message(STATUS "Flash SWF import: LZMA-compressed movies ENABLED")
 else()
     message(STATUS "Flash SWF import: LZMA-compressed movies DISABLED (install liblzma-dev to enable them)")
+endif()
+
+# Open CASCADE: STEP and IGES. Found in the system or unpacked under ~/.local/occt (dpkg -x of the libocct
+# packages); its library folder goes into the build's RPATH.
+find_path(OCCT_INCLUDE_DIR STEPControl_Reader.hxx PATH_SUFFIXES opencascade
+          HINTS $ENV{HOME}/.local/occt/usr/include/opencascade /usr/include/opencascade /usr/local/include/opencascade)
+set(OCCT_TOOLKITS TKDESTEP TKDEIGES TKDE TKXSBase TKHLR TKMesh TKBO TKPrim TKShHealing TKTopAlgo TKGeomAlgo TKBRep TKGeomBase TKG3d TKG2d TKMath TKernel)
+set(OCCT_LIBRARIES "")
+foreach(tk ${OCCT_TOOLKITS})
+    find_library(OCCT_LIB_${tk} NAMES ${tk} HINTS $ENV{HOME}/.local/occt/usr/lib/x86_64-linux-gnu /usr/lib/x86_64-linux-gnu /usr/local/lib)
+    if(OCCT_LIB_${tk})
+        list(APPEND OCCT_LIBRARIES ${OCCT_LIB_${tk}})
+    else()
+        set(OCCT_MISSING TRUE)
+    endif()
+endforeach()
+if(OCCT_INCLUDE_DIR AND NOT OCCT_MISSING)
+    set_source_files_properties(cadimport.cpp PROPERTIES COMPILE_DEFINITIONS "HAVE_OCCT" INCLUDE_DIRECTORIES "${OCCT_INCLUDE_DIR}")
+    target_link_libraries(xarq PRIVATE ${OCCT_LIBRARIES})
+    get_filename_component(OCCT_LIBDIR "${OCCT_LIB_TKernel}" DIRECTORY)
+    set_property(TARGET xarq APPEND PROPERTY BUILD_RPATH "${OCCT_LIBDIR}")
+    if(UNIX AND NOT APPLE AND NOT OCCT_LIBDIR MATCHES "^/usr/")
+        # The toolkits find each other through the path too: an old-style RPATH reaches their dependencies, RUNPATH doesn't.
+        target_link_options(xarq PRIVATE "LINKER:--disable-new-dtags")
+    endif()
+    message(STATUS "STEP/IGES import (Open CASCADE): ENABLED (${OCCT_LIBDIR})")
+else()
+    message(STATUS "STEP/IGES import (Open CASCADE): disabled (install the libocct-*-dev packages)")
 endif()
 
 # JPEG XR — link jxrlib and scope its headers/defines (-D__ANSI__ etc.) to jxr.cpp only, so the

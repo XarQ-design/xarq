@@ -1682,6 +1682,7 @@ bool Canvas::dropImportByExtension(const QString& p){
     if(ends(".aseprite")||ends(".ase")) return importAse(p);
     if(ends(".dwf"))  return importDwf(p);
     if(ends(".swf"))  return importSwf(p);
+    if(ends(".step")||ends(".stp")||ends(".igs")||ends(".iges")) return importCad(p);
     if(ends(".pptx")||ends(".ppsx")||ends(".potx")||ends(".pptm")||ends(".ppsm")||ends(".potm")||
        ends(".xlsx")||ends(".xlsm")||ends(".xltx")||ends(".xltm")) return importOfficeDrawing(p);
     if(ends(".dwfx")) return importXps(p);
