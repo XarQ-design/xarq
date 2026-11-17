@@ -4,13 +4,15 @@
 # Takes every .hpkg in the folder: XarQ's own (XarQ-26.10-alpha-haiku-x86_64.hpkg)
 # and those of the libraries it needs (jxrlib-1.2-1-x86_64.hpkg). Each architecture
 # gets <output-dir>/<arch>/current/ with packages/, repo, repo.info and repo.sha256,
-# which is what `pkgman add-repo https://xarq.org/haiku/<arch>/current` reads.
+# which is what `pkgman add-repo https://hpkg.xarq.org` reads (x86_64; the site serves
+# that folder, which also stays at https://xarq.org/haiku/x86_64/current).
 # package_repo comes from the HaikuPorts build image, so this runs on Linux.
 set -euo pipefail
 
 PACKAGES=$(cd "$1" && pwd)
 OUT=$(mkdir -p "$2" && cd "$2" && pwd)
 BASE_URL=${BASE_URL:-https://xarq.org/haiku}
+HPKG_URL=${HPKG_URL:-https://hpkg.xarq.org}
 # Pinned: the image has no "latest" tag.
 IMAGE=${HAIKU_TOOLS_IMAGE:-ghcr.io/haikuports/haikuporter/buildmaster:1.5.3}
 ENGINE=${CONTAINER_ENGINE:-docker}
@@ -49,6 +51,10 @@ done <<< "$info"
 
 for dir in "$OUT"/*/current; do
 	arch=$(basename "$(dirname "$dir")")
+	case $arch in
+	x86_64) baseurl=$HPKG_URL ;;
+	*) baseurl=$BASE_URL/$arch/current ;;
+	esac
 
 	# The identifier must never change: Haiku uses it to tell repositories apart,
 	# and changing it makes every user remove and add the repository again.
@@ -57,7 +63,7 @@ name XarQ
 vendor "$VENDOR"
 summary "XarQ, the vector illustration and page layout application, and the libraries it needs"
 priority 2
-baseurl $BASE_URL/$arch/current
+baseurl $baseurl
 identifier tag:xarq.org,2026:repositories/xarq/$arch
 architecture $arch
 EOF

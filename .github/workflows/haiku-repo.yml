@@ -1,9 +1,9 @@
 name: Haiku repository
 
-# Rebuilds the package repository at https://xarq.org/haiku/<arch>/current from
+# Rebuilds the package repository at https://hpkg.xarq.org (x86_64) from
 # every Haiku package (*-haiku-<arch>.hpkg) attached to a published release, and
 # copies it to the server. Haiku users add it once with
-#     pkgman add-repo https://xarq.org/haiku/x86_64/current
+#     pkgman add-repo https://hpkg.xarq.org
 # and then get XarQ and its updates through HaikuDepot.
 #
 # The .hpkg files are built on Haiku and attached by hand, which fires no event,

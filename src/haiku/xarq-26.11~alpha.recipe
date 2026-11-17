@@ -90,7 +90,7 @@ REQUIRES="
 
 # libjpegxr, libgdcm*, libopenslide, libredwg, libmobi and libpoppler 26 are not
 # in HaikuPorts (its Poppler is too old):
-# they come from the XarQ repository (https://xarq.org/haiku), built from the
+# they come from the XarQ repository (https://hpkg.xarq.org), built from the
 # haiku-* repositories of https://github.com/XarQ-design.
 BUILD_REQUIRES="
 	haiku_devel
