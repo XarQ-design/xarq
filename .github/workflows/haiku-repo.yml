@@ -82,5 +82,7 @@ jobs:
           # packages not uploaded yet.
           rsync -rtv --chmod=D755,F644 --exclude 'repo' --exclude 'repo.sha256' \
               -e 'ssh -i ~/.ssh/haiku_repo -o IdentitiesOnly=yes' site/ "$TARGET"
-          rsync -rtv --delete --chmod=D755,F644 \
+          # Let's Encrypt renewals for hpkg.xarq.org leave a root-owned
+          # .well-known in the folder; --delete can't remove it.
+          rsync -rtv --delete --exclude '.well-known' --chmod=D755,F644 \
               -e 'ssh -i ~/.ssh/haiku_repo -o IdentitiesOnly=yes' site/ "$TARGET"
