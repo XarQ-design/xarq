@@ -15,6 +15,12 @@
     <file>assets/logo/favicon.svg</file>
     <file>assets/logo/tabclose.svg</file>
     <file>assets/chrome/brand-tab.svg</file>
+    <file>assets/chrome/light/brand-tab.svg</file>
+    <file>assets/chrome/light/dialog-bottom-right.svg</file>
+    <file>assets/chrome/light/export-normal.svg</file>
+    <file>assets/chrome/light/export-hover.svg</file>
+    <file>assets/chrome/light/export-pressed.svg</file>
+    <file>assets/theme-light.qss</file>
     <file>assets/chrome/scrollbar-handle-vertical.svg</file>
     <file>assets/chrome/scrollbar-handle-vertical-hover.svg</file>
     <file>assets/chrome/scrollbar-handle-horizontal.svg</file>

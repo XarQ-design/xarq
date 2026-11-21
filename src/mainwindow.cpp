@@ -1,4 +1,6 @@
 #include "mainwindow.h"
+#include "theme.h"
+#include <QActionGroup>
 #include "panels.h"
 #include "galleries.h"
 #include "dialogs.h"
@@ -452,10 +454,10 @@ bool MainWindow::eventFilter(QObject* o, QEvent* e){
 // DS Canvas Toolbar — a floating glass pill at the bottom-centre of the canvas: pan · fit | guides · grid.
 void MainWindow::buildZoomPill(){
     // simple painted icons (reliable + crisp; actionIcon has no hand/fit/guides/grid glyphs)
-    auto pillIcon=[](const QString& kind)->QIcon{
+    auto pillIcon=[](const QString& kind)->QIcon{ return themedIcon([kind](const QColor& col)->QIcon{
         QPixmap pm(18,18); pm.fill(Qt::transparent);
         QPainter g(&pm); g.setRenderHint(QPainter::Antialiasing);
-        QPen pen(QColor(0xB8,0xCE,0xE0),1.6); pen.setCapStyle(Qt::RoundCap); pen.setJoinStyle(Qt::RoundJoin); g.setPen(pen);
+        QPen pen(col,1.6); pen.setCapStyle(Qt::RoundCap); pen.setJoinStyle(Qt::RoundJoin); g.setPen(pen);
         if(kind=="pan"){ g.drawLine(9,3,9,15); g.drawLine(3,9,15,9);
             g.drawLine(9,3,7,5); g.drawLine(9,3,11,5); g.drawLine(9,15,7,13); g.drawLine(9,15,11,13);
             g.drawLine(3,9,5,7); g.drawLine(3,9,5,11); g.drawLine(15,9,13,7); g.drawLine(15,9,13,11); }
@@ -465,7 +467,7 @@ void MainWindow::buildZoomPill(){
         else if(kind=="grid"){ g.drawLine(3,3,15,3); g.drawLine(3,9,15,9); g.drawLine(3,15,15,15);
             g.drawLine(3,3,3,15); g.drawLine(9,3,9,15); g.drawLine(15,3,15,15); }
         return QIcon(pm);
-    };
+    }, QColor(0xB8,0xCE,0xE0)); };
     m_zoomPill=new QWidget(m_canvas); m_zoomPill->setObjectName("zoomPill");
     m_zoomPill->setAttribute(Qt::WA_StyledBackground,true); m_zoomPill->setFixedHeight(36);
     auto* h=new QHBoxLayout(m_zoomPill); h->setContentsMargins(22,0,22,0); h->setSpacing(4);
@@ -510,7 +512,7 @@ protected:
         QPainterPath shade=shapes::rectPath(rect());
         const QRect t=m_tabs->tabRect(m_tabs->currentIndex()).translated(m_tabs->pos());
         if(t.isValid()) shade=shade.subtracted(shapes::standingTrap(t.left()-shapes::T6, t.width()+2*shapes::T6, height()-4, height()));
-        p.fillPath(shade, QColor(0,0,0,70));
+        p.fillPath(shade, theme::surface(QColor(0,0,0,70)));
     }
 private:
     QTabBar* m_tabs;
@@ -528,7 +530,7 @@ protected:
     bool eventFilter(QObject*, QEvent* e) override { if(e->type()==QEvent::Resize || e->type()==QEvent::Show) place(); return false; }
     void paintEvent(QPaintEvent*) override {
         QPainter p(this); QLinearGradient g(0, m_up?height():0, 0, m_up?0:height());
-        g.setColorAt(0, QColor(0,0,0,70)); g.setColorAt(1, QColor(0,0,0,0)); p.fillRect(rect(), g);
+        g.setColorAt(0, theme::surface(QColor(0,0,0,70))); g.setColorAt(1, QColor(0,0,0,0)); p.fillRect(rect(), g);
     }
 private:
     void place(){ const QRect v=m_area->viewport()->geometry(); setGeometry(v.left(), m_up? v.bottom()-9 : v.top(), v.width(), 10); raise(); }
@@ -541,11 +543,12 @@ class PanelStack;   // manages a column of sections: drag-to-reorder + detach/do
 
 // small painted "pop-out" icon for the detach/dock button
 static QIcon detachIcon(){
-    QPixmap pm(14,14); pm.fill(Qt::transparent);
-    QPainter g(&pm); g.setRenderHint(QPainter::Antialiasing);
-    QPen pen(QColor(0xB8,0xCE,0xE0),1.3); g.setPen(pen); g.setBrush(Qt::NoBrush);
-    g.drawRect(2,4,7,7); g.drawLine(9,3,12,3); g.drawLine(12,3,12,6); g.drawLine(12,3,8,7);
-    g.end(); return shapes::fadedIcon(QIcon(pm), QSize(14,14));
+    return shapes::fadedIcon(themedIcon([](const QColor& col)->QIcon{
+        QPixmap pm(14,14); pm.fill(Qt::transparent);
+        QPainter g(&pm); g.setRenderHint(QPainter::Antialiasing);
+        QPen pen(col,1.3); g.setPen(pen); g.setBrush(Qt::NoBrush);
+        g.drawRect(2,4,7,7); g.drawLine(9,3,12,3); g.drawLine(12,3,12,6); g.drawLine(12,3,8,7);
+        g.end(); return QIcon(pm); }, QColor(0xB8,0xCE,0xE0)), QSize(14,14));
 }
 
 // DS Panel — a collapsible section card. Header: grip + UPPERCASE title + collapse chevron + detach button.
@@ -1523,6 +1526,15 @@ void MainWindow::buildMenus() {
       connect(aOut,&QAction::toggled,this,[this](bool on){ m_canvas->setOutlineView(on); statusBar()->showMessage(on?"Outline (wireframe) view":"Normal view",2500); }); }
     { auto* aFS=mView->addAction("Full Screen"); aFS->setCheckable(true); aFS->setShortcut(QKeySequence(Qt::Key_F11));
       connect(aFS,&QAction::toggled,this,[this,aFS](bool on){ if(on) showFullScreen(); else showNormal(); aFS->setChecked(isFullScreen()||on); }); }
+    // The interface's look: the system's (the default), dark or light (also in Options ▸ General), drawn in at once.
+    { auto* mTheme=mView->addMenu("Theme"); auto* group=new QActionGroup(mTheme);
+      const QStringList labels={"Follow System","Dark","Light"};
+      for(int i=0;i<3;++i){ const QString choice=theme::choices()[i];
+          auto* a=mTheme->addAction(labels[i]); a->setCheckable(true); a->setData(choice); group->addAction(a);
+          connect(a,&QAction::triggered,this,[choice]{ theme::setSetting(choice); }); }
+      auto sync=[group]{ for(QAction* a : group->actions()) a->setChecked(a->data().toString()==theme::setting()); };
+      sync(); connect(theme::notifier(),&theme::Notifier::changed,group,sync);
+      connect(mTheme,&QMenu::aboutToShow,group,sync); }
     mView->addSeparator();
     auto* aRul=mView->addAction("Rulers",this,[this]{m_canvas->setShowRulers(!m_canvas->showRulers());});
     aRul->setCheckable(true); aRul->setChecked(m_canvas->showRulers()); aRul->setShortcut(QKeySequence("Ctrl+R"));
@@ -2029,7 +2041,7 @@ protected:
         QRect r(0,0,int(s.width()),int(s.height())); r.moveCenter(rect().center()); return r;
     }
     void paintEvent(QPaintEvent*) override {
-        QPainter g(this); g.fillRect(rect(), QColor(0x0C,0x0D,0x10));
+        QPainter g(this); g.fillRect(rect(), theme::surface(QColor(0x0C,0x0D,0x10)));
         const QRect ar=artRect();
         if(matte==1) g.fillRect(ar, Qt::white);
         else if(matte==2) g.fillRect(ar, Qt::black);
@@ -2042,7 +2054,7 @@ protected:
         const int sx = ar.left()+int(ar.width()*qBound(0.03,split,0.97));
         if((mode==0||mode==1) && !src.isNull()){ g.save(); if(mode==0) g.setClipRect(QRect(ar.left(),ar.top(),sx-ar.left(),ar.height())); g.drawImage(ar,src); g.restore(); }
         if((mode==0||mode==2) && !out.isNull()){ g.save(); if(mode==0) g.setClipRect(QRect(sx,ar.top(),ar.right()-sx+1,ar.height())); g.drawImage(ar,out); g.restore(); }
-        g.setPen(QColor(255,255,255,28)); g.setBrush(Qt::NoBrush); g.drawRect(ar.adjusted(0,0,-1,-1));
+        g.setPen(theme::color(QColor(255,255,255,28), theme::Line)); g.setBrush(Qt::NoBrush); g.drawRect(ar.adjusted(0,0,-1,-1));
         auto tag=[&](const QString& t, bool right, const QColor& fg){ QFont f("Ubuntu Mono"); f.setPixelSize(10); f.setBold(true); g.setFont(f);
             QRect tr=g.fontMetrics().boundingRect(t).adjusted(-8,-4,8,4);
             if(right) tr.moveBottomRight(QPoint(ar.right()-10, ar.bottom()-10)); else tr.moveBottomLeft(QPoint(ar.left()+10, ar.bottom()-10));
@@ -2535,7 +2547,10 @@ void MainWindow::buildTitleBar(){
     m_saveBtn->setIconSize(QSize(16,16)); m_saveBtn->setCursor(Qt::PointingHandCursor);
     connect(m_saveBtn,&QToolButton::clicked,this,[this]{ saveFile(); });
     m_exportBtn=new QToolButton; m_exportBtn->setObjectName("titleExport"); m_exportBtn->setFixedSize(66,36);
-    m_exportBtn->setIcon(actionIcon("export",16,QColor(0x30,0x42,0x51))); m_exportBtn->setIconSize(QSize(16,16));
+    // Dark ink on the sky key; white on the light look's blue key (assets/chrome/light/export-*.svg).
+    auto exportIcon=[this]{ m_exportBtn->setIcon(fixedActionIcon("export",16, theme::isLight() ? QColor(Qt::white) : QColor(0x30,0x42,0x51))); };
+    exportIcon(); connect(theme::notifier(),&theme::Notifier::changed,m_exportBtn,exportIcon);
+    m_exportBtn->setIconSize(QSize(16,16));
     m_exportBtn->setCursor(Qt::PointingHandCursor); m_exportBtn->setToolTip("Export…  Ctrl+E");
     connect(m_exportBtn,&QToolButton::clicked,this,[this]{ exportImage(); });
     h->addWidget(m_saveBtn,0,Qt::AlignTop); h->addWidget(m_exportBtn,0,Qt::AlignTop);

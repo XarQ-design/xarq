@@ -32,6 +32,7 @@
 #include <QTimer>
 #include <QApplication>
 #include <QCursor>
+#include "theme.h"
 #include "icons.h"     // toolIcon() — the Ctrl radial menu's inner ring draws tool icons
 #include <QFontInfo>
 #include <QSet>
@@ -97,6 +98,8 @@ Canvas::Canvas(QWidget* parent) : QWidget(parent) {
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);
     setCursor(Qt::ArrowCursor);
+    // The pasteboard is in the cached backdrop: a change of look redraws it.
+    connect(theme::notifier(), &theme::Notifier::changed, this, [this]{ m_cacheDirty=true; update(); });
     // Every committed document change emits documentChanged → invalidate the screen-render cache.
     connect(this, &Canvas::documentChanged, this, [this]{ m_cacheDirty = true; });
     // The static selection-outline cache is invalid whenever the selection or the document changes.
@@ -4473,7 +4476,7 @@ void Canvas::paintEvent(QPaintEvent*) {
     if (m_previewZoom && !m_screenCache.isNull() && m_screenCache.size()==dev
         && m_cacheKey.xf != viewXf() && m_cacheKey.xf.isInvertible()) {   // only if there's an actual zoom delta to preview
         QPainter g(this);
-        g.fillRect(rect(), QColor(0x10,0x16,0x1B));                       // pasteboard fill for areas the scaled bitmap doesn't cover
+        g.fillRect(rect(), theme::surface(QColor(0x10,0x16,0x1B)));       // pasteboard fill for areas the scaled bitmap doesn't cover
         g.setRenderHint(QPainter::SmoothPixmapTransform, true);
         g.setTransform(m_cacheKey.xf.inverted() * viewXf());             // cached (rendered-view) pixels → current view
         g.drawImage(0, 0, m_screenCache);
@@ -4506,7 +4509,7 @@ void Canvas::paintEvent(QPaintEvent*) {
 void Canvas::paintBackdrop(QPainter& g) {
     // The pasteboard is Subtitld's window gradient, so the artwork sits where its video does.
     { const QRectF r=rect(); QLinearGradient cbg(r.topLeft(), r.bottomLeft());
-      cbg.setColorAt(0.0, QColor(0x07,0x09,0x0B)); cbg.setColorAt(1.0, QColor(0x1A,0x23,0x2B));
+      cbg.setColorAt(0.0, theme::surface(QColor(0x07,0x09,0x0B))); cbg.setColorAt(1.0, theme::surface(QColor(0x1A,0x23,0x2B)));
       g.fillRect(r, cbg); }
 
     // page(s) — stacked vertically on the pasteboard. The artboard rect spans all pages.
@@ -4520,7 +4523,7 @@ void Canvas::paintBackdrop(QPainter& g) {
         // soft drop shadow — layered low-alpha rects (approximates a blur), biased downward (light from top)
         for(int s=12;s>=1;--s){ g.setBrush(QColor(0,0,0,5)); g.drawRoundedRect(pv.adjusted(-s, -s+4, s, s+6), s, s); }
         g.setBrush(m_doc.pageColor); g.drawRect(pv);
-        if(m_doc.pageCount>1){ g.setPen(QColor(150,155,165)); QFont f=g.font(); f.setPixelSize(10); g.setFont(f);
+        if(m_doc.pageCount>1){ g.setPen(theme::ink(QColor(150,155,165))); QFont f=g.font(); f.setPixelSize(10); g.setFont(f);
             g.drawText(QPointF(pv.left(), pv.top()-4), QString("Page %1").arg(pi+1)); }
     }
     drawGrid(g);   // grid drawn on TOP of the page(s) (when enabled), under the document content
@@ -4721,7 +4724,8 @@ bool Canvas::indentMarkerX(int which, double& viewX) const {
 void Canvas::drawRulers(QPainter& g) {
     if (!m_showRulers) return;
     const int W=width(), H=height();
-    const QColor bg(0x14,0x1C,0x23), tick(0x56,0x6F,0x84), txt(0x8E,0xA6,0xB9), curCol(0xB8,0xCE,0xE0);
+    const QColor bg=theme::surface(QColor(0x14,0x1C,0x23)), tick=theme::ink(QColor(0x56,0x6F,0x84)), txt=theme::ink(QColor(0x8E,0xA6,0xB9)),
+                 curCol=theme::color(QColor(0xB8,0xCE,0xE0), theme::Line);
     g.setRenderHint(QPainter::Antialiasing,false);
     g.setPen(Qt::NoPen); g.setBrush(bg);
     g.drawRect(QRectF(0,0,W,kRuler)); g.drawRect(QRectF(0,0,kRuler,H));

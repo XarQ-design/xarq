@@ -1,4 +1,5 @@
 #include "panels.h"
+#include "theme.h"
 #include "shapes.h"
 #include "icons.h"
 #include "dialogs.h"
@@ -745,12 +746,12 @@ int ColourLine::swatchAt(const QPoint& p) const {
 }
 void ColourLine::paintEvent(QPaintEvent*){
     QPainter g(this);
-    g.fillRect(rect(), QColor(33,34,38));
+    g.fillRect(rect(), theme::surface(QColor(33,34,38)));
     QRect nc(kPad,kPad,kNoCol,kSw); g.setBrush(Qt::white); g.setPen(QPen(QColor(0,0,0,120))); g.drawRect(nc);
     g.setPen(QPen(QColor(220,40,40),2)); g.drawLine(nc.topRight(),nc.bottomLeft());
     auto pal=swatchPalette(); int x=kPad+kNoCol+6;
     for(int i=0;i<pal.size();++i){ QRect r(x,kPad,kSw,kSw);
-        g.setPen(QPen(i==m_hover?QColor(255,255,255):QColor(0,0,0,120), i==m_hover?2:1));
+        g.setPen(QPen(i==m_hover?theme::ink(QColor(255,255,255)):QColor(0,0,0,120), i==m_hover?2:1));
         g.setBrush(pal[i].second); g.drawRect(r); x+=kSw+2; }
 }
 void ColourLine::applyColour(int idx, bool line){

@@ -3,6 +3,7 @@
 // purposeful "no recent files" empty state, and a faded coming-soon grid background. Shown embedded in
 // the canvas area on a clean launch (empty state) and hosted inside a modal for File ▸ Start screen.
 #include "startscreen.h"
+#include "theme.h"
 #include "mainwindow.h"
 #include "canvas.h"
 #include "icons.h"
@@ -86,12 +87,12 @@ protected:
     void paintEvent(QPaintEvent*) override {
         QPainter p(this); p.setRenderHint(QPainter::Antialiasing);
         const int W=width(), H=height();
-        { QLinearGradient bg(0,0,0,H); bg.setColorAt(0.0,tok::app); bg.setColorAt(1.0,tok::panel); p.fillRect(rect(), bg); }
+        { QLinearGradient bg(0,0,0,H); bg.setColorAt(0.0,theme::surface(tok::app)); bg.setColorAt(1.0,theme::surface(tok::panel)); p.fillRect(rect(), bg); }
         if (W<=0 || H<=0) return;
         // grid lines drawn into a scratch layer, then masked so they read only top-right and fade out
         QImage layer(size(), QImage::Format_ARGB32_Premultiplied); layer.fill(Qt::transparent);
         { QPainter g(&layer);
-          g.setPen(QPen(QColor(255,255,255,15), 1));               // --border-subtle ≈ rgba(255,255,255,0.06)
+          g.setPen(QPen(theme::surface(QColor(255,255,255,15)), 1));               // --border-subtle ≈ rgba(255,255,255,0.06)
           for (int x=-1; x<=W; x+=54) g.drawLine(x,0,x,H);
           for (int y=-1; y<=H; y+=54) g.drawLine(0,y,W,y);
           g.setCompositionMode(QPainter::CompositionMode_DestinationIn);
@@ -101,7 +102,7 @@ protected:
           g.fillRect(layer.rect(), mask); }
         p.drawImage(0,0,layer);
         QRadialGradient glow(QPointF(W*0.82, H*0.04), 780);        // ~radial(900×620 at 82% 4%)
-        glow.setColorAt(0.0, QColor(184,206,224,20)); glow.setColorAt(0.6, QColor(184,206,224,0));
+        glow.setColorAt(0.0, theme::surface(QColor(184,206,224,20))); glow.setColorAt(0.6, QColor(184,206,224,0));
         p.fillRect(rect(), glow);
     }
 };
@@ -262,7 +263,7 @@ QWidget* StartScreen::buildPanel(MainWindow* mw, std::function<void()> onChosen)
         {"Business card","Print · 85 × 55 mm","credit-card",QColor(34,195,184,41),  QColor(0x3F,0xD2,0xC7), false, 2},
         {"Photo portfolio","Photo · grid","images",         QColor(226,85,161,41),  QColor(0xEC,0x74,0xB6), false, 3},
         {"Presentation","1920 × 1080 px","presentation",    QColor(245,178,61,41),  QColor(0xF5,0xB2,0x3D), false, 4},
-        {"Custom size","Set your own","plus",               tok::well,              tok::sec,               true,  5},
+        {"Custom size","Set your own","plus",               theme::surface(tok::well), tok::sec,             true,  5},
     };
     // keep (button, haystack, def) so search can re-flow the grid to matches only
     struct CardEntry { QWidget* btn; QString hay; };

@@ -1,6 +1,7 @@
 // dialogs.cpp — modal dialogs. The Color Editor is the signature piece: an
 // SV square + hue strip + alpha, every colour model, hex, and named-colour swatches.
 #include "dialogs.h"
+#include "theme.h"
 #include "canvas.h"
 #include "photoops.h"
 #include <QtWidgets>
@@ -154,6 +155,13 @@ void OptionsDialog::show(QWidget* parent, Canvas* canvas){
       auto* undoSp=new QSpinBox; undoSp->setRange(1,1000); undoSp->setValue(cfg.value("general/undoLevels",200).toInt()); f->addRow("Undo levels",undoSp);
       auto* recentSp=new QSpinBox; recentSp->setRange(0,20); recentSp->setValue(cfg.value("general/recentFiles",8).toInt()); f->addRow("Recent files",recentSp);
       auto* save=new QCheckBox("Confirm before closing unsaved documents"); save->setChecked(cfg.value("general/confirmClose",true).toBool()); f->addRow(save);
+      // The interface's look: the system's (the default), dark or light, drawn in at once.
+      auto* look=new QComboBox;
+      look->addItem(QString("System theme (%1)").arg(theme::systemTheme()=="light" ? "Light" : "Dark"), "system");
+      look->addItem("Dark","dark"); look->addItem("Light","light");
+      look->setCurrentIndex(std::max(0, look->findData(theme::setting())));
+      QObject::connect(look,&QComboBox::activated,look,[look]{ theme::setSetting(look->currentData().toString()); });
+      f->addRow("Theme",look);
       QObject::connect(&dlg,&QDialog::accepted,&dlg,[=,&cfg]{ cfg.setValue("general/undoLevels",undoSp->value()); cfg.setValue("general/recentFiles",recentSp->value()); cfg.setValue("general/confirmClose",save->isChecked()); });
       tabs->addTab(w,"General"); }
 

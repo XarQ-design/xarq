@@ -42,6 +42,7 @@
 #include "xar.h"
 #include "svgimport.h"
 #include "prepress.h"
+#include "theme.h"
 #include <functional>
 #include <cstdio>
 
@@ -53,32 +54,10 @@ static void applyTheme(QApplication& app) {
     QFontDatabase::addApplicationFont(":/xarq/assets/fonts/UbuntuMono.ttf");
     { QFont uiFont("Montserrat"); uiFont.setPixelSize(12); uiFont.setStyleStrategy(QFont::PreferAntialias); app.setFont(uiFont); }
 
-    // XarQ palette — Subtitld's slate ink scale + sky accent (#B8CEE0).
-    QPalette p;
-    const QColor chrome(0x0D,0x12,0x16), panel(0x1A,0x23,0x2B), raised(0x21,0x2D,0x37),
-                 well(0x30,0x42,0x51), textStrong(0xF0,0xF6,0xFB), textBody(0xB8,0xCE,0xE0),
-                 textSec(0x8E,0xA6,0xB9), textDis(0x56,0x6F,0x84), accent(0xB8,0xCE,0xE0);
-    p.setColor(QPalette::Window, chrome);
-    p.setColor(QPalette::WindowText, textBody);
-    p.setColor(QPalette::Base, well);
-    p.setColor(QPalette::AlternateBase, panel);
-    p.setColor(QPalette::Text, textBody);
-    p.setColor(QPalette::BrightText, textStrong);
-    p.setColor(QPalette::Button, raised);
-    p.setColor(QPalette::ButtonText, textBody);
-    p.setColor(QPalette::ToolTipBase, QColor(0x1A,0x23,0x2B));
-    p.setColor(QPalette::ToolTipText, Qt::white);
-    p.setColor(QPalette::Highlight, accent);
-    p.setColor(QPalette::HighlightedText, QColor(0x30,0x42,0x51));
-    p.setColor(QPalette::Link, QColor(0xC8,0xDB,0xE9));
-    p.setColor(QPalette::PlaceholderText, textSec);
-    p.setColor(QPalette::Disabled, QPalette::Text, textDis);
-    p.setColor(QPalette::Disabled, QPalette::ButtonText, textDis);
-    p.setColor(QPalette::Disabled, QPalette::WindowText, textDis);
-    app.setPalette(p);
     app.setWindowIcon(QIcon(":/xarq/assets/logo/xarq-appicon.svg"));
 
-    app.setStyleSheet(R"QSS(
+    // The stylesheet in the dark look; theme::install turns it over when the light look is picked.
+    theme::install(app, QString::fromUtf8(R"QSS(
         /* ===== XarQ, in Subtitld's language — near-black window gradient, slate ink scale, sky accent, 2px corners, no shadows ===== */
         * { font-family: "Montserrat","DejaVu Sans","Segoe UI",sans-serif; font-size: 12px; outline: none; }
         QMainWindow { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #07090B, stop:1 #1A232B); }
@@ -351,7 +330,7 @@ static void applyTheme(QApplication& app) {
         /* Colour Line — bottom palette strip */
         QToolBar#colourTb { background:#07090B; border:none; padding:0; spacing:0; }
         QWidget#colourline { background:#07090B; }
-    )QSS");
+    )QSS"));
 }
 
 // Makes popup windows (menu-bar menus, context menus, combobox dropdowns) translucent so their QSS
@@ -516,6 +495,9 @@ int main(int argc, char** argv) {
 #endif
     app.setOrganizationName("XarQ");
     app.setApplicationVersion(XARQ_VERSION);
+    // The self-test and the headless renders draw in the dark look, whatever look the user picked.
+    for(int i=1;i<argc;++i){ const QByteArray a(argv[i]);
+        if(a=="--selftest"||a=="--export"||a=="--save"||a=="--themedump") qputenv("XARQ_THEME","dark"); }
     applyTheme(app);
     app.installEventFilter(new xara::DialogChrome(&app));   // Subtitld's dialog chrome on every dialog
     app.installEventFilter(new RoundPopups(&app));   // translucent (rounded) menu + dropdown popups
@@ -537,6 +519,7 @@ int main(int argc, char** argv) {
         else if(a=="--open"&&i+1<argc) openPath=argv[++i];
         else if(a=="--save"&&i+1<argc) savePath=argv[++i];
         else if(a=="--shotnode"&&i+1<argc) shotNodePath=argv[++i];
+        else if(a=="--themedump"&&i+1<argc) return theme::dump(argv[++i]);
         else if(a=="--selftest"){ extern int runSelfTest(); return runSelfTest(); }
         else if(a=="--svgfontdump"&&i+1<argc){ // diagnostic: parse an SVG and report each Text shape's requested vs Qt-resolved font
             QString p=argv[++i]; QFile f(p);

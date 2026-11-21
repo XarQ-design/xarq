@@ -1,6 +1,7 @@
 // galleries.cpp — the gallery docks. Batch B: the Colour Gallery (named/theme/
 // tint/shade/linked + PANTONE).
 #include "galleries.h"
+#include "theme.h"
 #include "dialogs.h"
 #include "canvas.h"
 #include <QtWidgets>
@@ -334,8 +335,8 @@ static QString objLabel(const Shape& s){
 static QIcon swatch(const Shape& s){
     QPixmap pm(14,14); pm.fill(Qt::transparent); QPainter g(&pm); g.setRenderHint(QPainter::Antialiasing);
     QColor c = s.fill.color.isValid()? s.fill.color : QColor(120,128,140);
-    if(s.type==ShapeType::Group){ g.setPen(QPen(QColor(150,160,175),1)); g.setBrush(Qt::NoBrush); g.drawRect(1,3,11,9); g.drawRect(3,1,7,3); }
-    else if(s.type==ShapeType::Text){ g.setPen(QPen(QColor(200,205,215),1)); g.setFont(QFont("Sans",9,QFont::Bold)); g.drawText(pm.rect(),Qt::AlignCenter,"T"); }
+    if(s.type==ShapeType::Group){ g.setPen(QPen(theme::ink(QColor(150,160,175)),1)); g.setBrush(Qt::NoBrush); g.drawRect(1,3,11,9); g.drawRect(3,1,7,3); }
+    else if(s.type==ShapeType::Text){ g.setPen(QPen(theme::ink(QColor(200,205,215)),1)); g.setFont(QFont("Sans",9,QFont::Bold)); g.drawText(pm.rect(),Qt::AlignCenter,"T"); }
     else { g.setPen(QPen(c.darker(150),1)); g.setBrush(c);
         if(s.type==ShapeType::Ellipse) g.drawEllipse(1,1,12,12); else g.drawRoundedRect(1,1,12,12,2,2); }
     return QIcon(pm);
@@ -419,12 +420,12 @@ void PageLayerGallery::rebuild(){
         it->setText(1, s.visible?QStringLiteral("👁"):QStringLiteral("·"));
         it->setText(2, s.locked?QStringLiteral("🔒"):QString());
         it->setTextAlignment(1,Qt::AlignCenter); it->setTextAlignment(2,Qt::AlignCenter);
-        if(s.locked) it->setForeground(0,QColor(130,138,150)); };
+        if(s.locked) it->setForeground(0,theme::ink(QColor(130,138,150))); };
     // Recursively add a group's children as display-only rows (nested groups included).
     std::function<void(QTreeWidgetItem*,const Shape&)> addKids=[&](QTreeWidgetItem* parent,const Shape& g){
         for(const Shape& ch: g.children){ auto* ci=new QTreeWidgetItem(parent);
             ci->setData(0,RKind,KChild); ci->setData(0,RIdx,-1); ci->setText(0,objLabel(ch)); ci->setIcon(0,swatch(ch));
-            ci->setFlags(Qt::ItemIsEnabled); ci->setForeground(0,QColor(150,158,170)); styleObj(ci,ch);
+            ci->setFlags(Qt::ItemIsEnabled); ci->setForeground(0,theme::ink(QColor(150,158,170))); styleObj(ci,ch);
             if(ch.type==ShapeType::Group && !ch.children.isEmpty()) addKids(ci,ch); } };
     for(int i=ly.size()-1;i>=0;--i){                     // top layer at the top
         auto* li=new QTreeWidgetItem(m_tree);
