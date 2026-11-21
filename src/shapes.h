@@ -4,7 +4,11 @@
 // The look: no borders, depth from a vertical gradient (raised: lighter at the top, darker at the bottom; sunken: the
 // other way round, softer at the bottom), 3px corners on rectangles, 75° slants with 6px curves, and a 1px 45% black
 // contact line under raised buttons.
+//
+// The colours here are the dark look's; gradient() and bottomColour() take the base in it and draw it in the current
+// look (theme::surface()).
 #include <QColor>
+#include <QIconEngine>
 #include <QIcon>
 #include <QLinearGradient>
 #include <QPainter>
@@ -12,6 +16,7 @@
 #include <QTransform>
 #include <algorithm>
 #include <cmath>
+#include "theme.h"
 
 namespace shapes {
 
@@ -41,8 +46,21 @@ inline QColor shade(const QColor& c, double pct){
     return q;
 }
 
+// `dark` in the current look, darker if need be for its lightest stop (+depth) to stay a shade, not white: on the light
+// look the grounds are near white, and a gradient clipped at white loses its depth. The hue is the dark colour's.
+inline QColor lightEnough(const QColor& dark, double depth){
+    QColor base=theme::surface(dark);
+    if(theme::isLight() && base.lightnessF()+depth/100 > 1){
+        float h,s,l,a; dark.getHslF(&h,&s,&l,&a);
+        QColor q; q.setHslF(std::max(h,0.f), std::min(s,0.35f), float(1-depth/100), base.alphaF());
+        base=q;
+    }
+    return base;
+}
+
 // Vertical gradient over y0..y1: Raised (+depth → −depth) or Sunken (−depth → +depth/2).
-inline QLinearGradient gradient(double y0, double y1, const QColor& base, Kind kind=Raised, double depth=DEPTH){
+inline QLinearGradient gradient(double y0, double y1, const QColor& dark, Kind kind=Raised, double depth=DEPTH){
+    const QColor base=lightEnough(dark, depth);
     QLinearGradient g(0,y0,0,y1);
     if(kind==Raised){ g.setColorAt(0, shade(base,depth));  g.setColorAt(1, shade(base,-depth)); }
     else            { g.setColorAt(0, shade(base,-depth)); g.setColorAt(1, shade(base,depth/2)); }
@@ -50,8 +68,8 @@ inline QLinearGradient gradient(double y0, double y1, const QColor& base, Kind k
 }
 
 // The colour a gradient ends on, for blending one zone into the next without an edge.
-inline QColor bottomColour(const QColor& base, Kind kind=Raised, double depth=DEPTH){
-    return shade(base, kind==Raised ? -depth : depth/2);
+inline QColor bottomColour(const QColor& dark, Kind kind=Raised, double depth=DEPTH){
+    return shade(lightEnough(dark, depth), kind==Raised ? -depth : depth/2);
 }
 
 inline QPainterPath rectPath(const QRectF& r){ QPainterPath p; p.addRect(r); return p; }
@@ -103,26 +121,41 @@ inline QPainterPath standingTrap(double x, double w, double h, double bottom){
 // A raised piece: gradient fill and, optionally, the 1px contact line along its bottom.
 inline void fillRaised(QPainter& p, const QPainterPath& path, const QRectF& r, const QColor& base=RAISED, bool contact=true){
     p.fillPath(path, gradient(r.top(), r.bottom(), base));
-    if(contact) p.fillPath(path.subtracted(path.translated(0,-1)), CONTACT);
+    if(contact) p.fillPath(path.subtracted(path.translated(0,-1)), theme::color(CONTACT));
 }
 
 // A sunk zone (pressed/checked): sunken gradient and a 1px shadow along its top.
 inline void fillSunk(QPainter& p, const QPainterPath& path, const QRectF& r, const QColor& base=SUNK, const QColor& shadow=TOP_SHADOW){
     p.fillPath(path, gradient(r.top(), r.bottom(), base, Sunken));
-    p.fillPath(path.intersected(rectPath(QRectF(r.x()-1, r.top(), r.width()+2, 1))), shadow);
+    p.fillPath(path.intersected(rectPath(QRectF(r.x()-1, r.top(), r.width()+2, 1))), theme::color(shadow));
 }
+
+// Drawn from the icon when painted, so an icon that follows the look (actionIcon) still does.
+class FadedIconEngine : public QIconEngine {
+public:
+    FadedIconEngine(const QIcon& icon, double rest) : m_icon(icon), m_rest(rest) {}
+    QPixmap scaledPixmap(const QSize& size, QIcon::Mode mode, QIcon::State state, qreal scale) override {
+        if(mode!=QIcon::Normal) return m_icon.pixmap(size, scale, mode==QIcon::Active ? QIcon::Normal : mode, state);
+        const QPixmap full=m_icon.pixmap(size, scale, QIcon::Normal, state);
+        QPixmap faded(full.size()); faded.setDevicePixelRatio(full.devicePixelRatio()); faded.fill(Qt::transparent);
+        { QPainter p(&faded); p.setOpacity(m_rest); p.drawPixmap(0,0,full); }
+        return faded;
+    }
+    QPixmap pixmap(const QSize& size, QIcon::Mode mode, QIcon::State state) override { return scaledPixmap(size,mode,state,1.0); }
+    void paint(QPainter* p, const QRect& r, QIcon::Mode mode, QIcon::State state) override {
+        p->drawPixmap(r, scaledPixmap(r.size(), mode, state, p->device() ? p->device()->devicePixelRatioF() : 1.0));
+    }
+    QSize actualSize(const QSize& size, QIcon::Mode mode, QIcon::State state) override { return m_icon.actualSize(size,mode,state); }
+    QIconEngine* clone() const override { return new FadedIconEngine(m_icon, m_rest); }
+private:
+    QIcon m_icon;
+    double m_rest;
+};
 
 // An ambient icon at 50% opacity that comes to 100% under the pointer. Qt draws a QToolButton's Active pixmap while
 // it is hovered only when the button is auto-raised, so set autoRaise on the button too.
-inline QIcon fadedIcon(const QIcon& icon, const QSize& size, double rest=0.5){
-    QIcon out;
-    for(const qreal dpr : {1.0, 2.0}){
-        const QPixmap full=icon.pixmap(size, dpr);
-        QPixmap faded(full.size()); faded.setDevicePixelRatio(full.devicePixelRatio()); faded.fill(Qt::transparent);
-        { QPainter p(&faded); p.setOpacity(rest); p.drawPixmap(0,0,full); }
-        out.addPixmap(faded, QIcon::Normal); out.addPixmap(full, QIcon::Active);
-    }
-    return out;
+inline QIcon fadedIcon(const QIcon& icon, const QSize& /*size*/, double rest=0.5){
+    return QIcon(new FadedIconEngine(icon, rest));
 }
 
 } // namespace shapes

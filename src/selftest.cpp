@@ -82,6 +82,7 @@
 #include "fxgvector.h"
 #include "sqlitemini.h"
 #include "xdvector.h"
+#include "theme.h"
 #ifdef HAVE_BZIP2
 #include <bzlib.h>
 #endif
@@ -13850,6 +13851,18 @@ if(xara::pdfVectorAvailable()){
       check(byKey.value("Ctrl+0")==QStringList{QStringLiteral("Fit")}, "shortcuts: Ctrl+0 is View > Fit");
       check(byKey.value("F11")==QStringList{QStringLiteral("Full Screen")} && byKey.value("Shift+F11")==QStringList{QStringLiteral("Properties / Fills")}, "shortcuts: F11 is Full Screen, Shift+F11 is Properties / Fills");
     }
+
+    std::printf("[theme] the light look turns the dark palette over as Subtitld's theme.py does\n");
+    { auto same=[](theme::Rgba c, int r, int g, int b, int a){ return c.r==r && c.g==g && c.b==b && c.a==a; };
+      // Values from Subtitld's interface/theme.py (map_rgba / map_stylesheet) on the same inputs.
+      check(same(theme::mapRgba(0xb8,0xce,0xe0,255,theme::Text),60,84,103,255), "theme: body text #b8cee0 turns dark blue");
+      check(same(theme::mapRgba(0x1a,0x23,0x2b,255,theme::Surface),221,228,235,255), "theme: the panel #1a232b turns light");
+      check(same(theme::mapRgba(0xb8,0xce,0xe0,255,theme::Icon),86,111,132,255), "theme: a pale icon turns the palette's #566f84");
+      check(same(theme::mapRgba(0x30,0x42,0x51,255,theme::Line),191,205,217,255), "theme: a dark line turns light grey");
+      check(same(theme::mapRgba(0,0,0,115,theme::Surface),0,0,0,17), "theme: a shadow wash keeps a little of its darkness");
+      check(theme::mapStylesheet("QWidget#x:hover { background:#3E5363; color:#FFFFFF; }")=="QWidget#x:hover { background:rgba(86, 111, 132, 26); color:#2f4150; }",
+            "theme: a hovered ground becomes a tint, white text dark blue");
+      check(!theme::isLight() && theme::color(QColor(0x1a,0x23,0x2b))==QColor(0x1a,0x23,0x2b), "theme: the self-test draws in the dark look, colours untouched"); }
 
     std::printf("[dialogs] every dialog wears Subtitld's chrome\n");
     { QDialog d; d.setWindowTitle("Chrome test"); auto* v=new QVBoxLayout(&d); v->addWidget(new QLineEdit);

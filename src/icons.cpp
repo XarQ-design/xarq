@@ -3,6 +3,8 @@
 #include <QPixmap>
 #include <QPainterPath>
 #include <QtMath>
+#include <QIconEngine>
+#include "theme.h"
 
 namespace xara {
 
@@ -15,7 +17,7 @@ static QPixmap makePix(int s, std::function<void(QPainter&,double)> draw, const 
     return pm;
 }
 
-QIcon toolIcon(Tool t, int size, const QColor& col) {
+static QIcon drawToolIcon(Tool t, int size, const QColor& col) {
     auto pm = makePix(size, [&](QPainter& g, double s){
         const double m=s*0.2, M=s*0.8, c=s*0.5;
         switch (t) {
@@ -75,7 +77,7 @@ QIcon toolIcon(Tool t, int size, const QColor& col) {
     return QIcon(pm);
 }
 
-QIcon actionIcon(const QString& name, int size, const QColor& col) {
+static QIcon drawActionIcon(const QString& name, int size, const QColor& col) {
     auto pm = makePix(size, [&](QPainter& g, double s){
         const double c=s*0.5, r=s*0.055;   // corner radius unit for a soft, modern feel
         auto rrect=[&](double x0,double y0,double x1,double y1,double rad){ g.drawRoundedRect(QRectF(x0,y0,x1-x0,y1-y0),rad,rad); };
@@ -177,6 +179,46 @@ QIcon actionIcon(const QString& name, int size, const QColor& col) {
         else { g.drawEllipse(QPointF(c,c),s*0.25,s*0.25); }
     }, col);
     return QIcon(pm);
+}
+
+// An icon drawn in the look current when it is painted, so a button set up once follows a change of look. The colour
+// is a dark-look one: pale strokes turn to the light look's icon blue; dark ink (an icon on a pale key) stays.
+class ThemedIconEngine : public QIconEngine {
+public:
+    explicit ThemedIconEngine(std::function<QIcon(const QColor&)> draw, const QColor& col) : m_draw(std::move(draw)), m_col(col) {}
+    void paint(QPainter* p, const QRect& r, QIcon::Mode mode, QIcon::State state) override { current().paint(p,r,Qt::AlignCenter,mode,state); }
+    QPixmap pixmap(const QSize& size, QIcon::Mode mode, QIcon::State state) override { return current().pixmap(size,mode,state); }
+    QPixmap scaledPixmap(const QSize& size, QIcon::Mode mode, QIcon::State state, qreal scale) override { return current().pixmap(size,scale,mode,state); }
+    QSize actualSize(const QSize& size, QIcon::Mode mode, QIcon::State state) override { return current().actualSize(size,mode,state); }
+    QIconEngine* clone() const override { return new ThemedIconEngine(m_draw,m_col); }
+private:
+    QIcon& current(){
+        const bool light=theme::isLight();
+        QIcon& ic = light ? m_light : m_dark;
+        if(ic.isNull()){
+            QColor c=m_col;
+            if(light && c.lightnessF()>=0.5) c=theme::color(c, theme::Icon);
+            ic=m_draw(c);
+        }
+        return ic;
+    }
+    std::function<QIcon(const QColor&)> m_draw;
+    QColor m_col;
+    QIcon m_dark, m_light;
+};
+
+QIcon fixedActionIcon(const QString& name, int size, const QColor& col) { return drawActionIcon(name,size,col); }
+
+QIcon themedIcon(std::function<QIcon(const QColor&)> draw, const QColor& col) {
+    return QIcon(new ThemedIconEngine(std::move(draw), col));
+}
+
+QIcon toolIcon(Tool t, int size, const QColor& col) {
+    return QIcon(new ThemedIconEngine([t,size](const QColor& c){ return drawToolIcon(t,size,c); }, col));
+}
+
+QIcon actionIcon(const QString& name, int size, const QColor& col) {
+    return QIcon(new ThemedIconEngine([name,size](const QColor& c){ return drawActionIcon(name,size,c); }, col));
 }
 
 } // namespace xara
