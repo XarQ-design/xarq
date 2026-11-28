@@ -343,7 +343,7 @@ QImage decodeDDS(const u8* p, i64 n){
                 int A=aM?int((v&aM)>>as)*255/int(amx):255; o[x]=qRgba(R,G,B,A); } }
         return img;
     }
-    return {};   // an unsupported DDS subtype (BC6H, typed DX10 formats)
+    return {};   // an unsupported DDS subtype (typed DX10 formats)
 }
 
 // ---------------------------------------------- Truevision TGA ----------------

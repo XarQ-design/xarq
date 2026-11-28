@@ -13595,6 +13595,56 @@ if(xara::pdfVectorAvailable()){
       const QImage cr = RasterExtra::decodeData(QByteArray::fromBase64("SHgAStidAAABIxsRABIADAEBAgAAAAAAAAAAAAAAAAAAAABKAAA/AAsAAIkAADgADQAAwQAADAABAADNAAAMAAEAOgAA2QAAARMAgmxAgAAQAABOEonmDBgSAIEZQEAAGCAL5rct8Rp3KUU6HXjxLJlhvNcvZE/aD0dC/8Q5Cq2/n73QAClAz3QAxnAAQAwwwABKRv1plzqnmfsQoC0g87YPsYAqqqqquOOOM6z7nWdTbYXADvZkbxvf60IuEBErAAQCYIAAAAAAAB/+oAHGYIAAAAAAAB5QAAcGYIAAAAAAABrn//84ALmwAAAAAgQA7qGADZsAIAAAIIAPNxFAgAMwAAAAAAAACAAZgAAAAAAAAEAQ9XgHmI1BBCyAOAAocquA"));
       check(cr.size() == QSize(18, 12) && cr.pixel(0, 0) == 0xff213c5a && cr.pixel(17, 11) == 0xffdc7828 && cr.pixel(9, 6) == 0xffde7929 && cr.pixel(4, 8) == 0xffde7529,
             "Crunch: a DXT5 .crn file to the blocks crunch itself unpacks");
+      // Unity's Crunch: ETC1, ETC2 with EAC alpha, and DXT1 in its own coding (the header doesn't say which), 18 x 12
+      // so the last block column and row are cut; pixels as Unity's crunch tool unpacks them.
+      {
+        struct UnityCase { const char* name; const char* b64; QRgb px[4]; };
+        const UnityCase cases[3] = {
+          {"ETC1", "SHgASh3YAAAA7oh8ABIADAEBCgAAAAAAAAAAAAAAAAAAAABKAAAzABgAAH0AAC8ADQAAAAAAAAAAAAAAAAAAAAAAKQAArAAAANUAgjGAAAgwwhOAa+nA2yDcBIYhVFSEMrRTSmikBIKygPQHATOZ1PcWbaBfjPZdJenPJ+AAQmwAAwgAgwA4ZL1habJJUzjoTZcOa/AM7ydOnZxaAe21W4QPBm19tzfn/NoKmAKGLQAAAAABDcNA0wTRBAAxFgOAABBhCJ5HAWvAAbMBAAAAhgABpw8A1oVVGnxexF6p/tbmTOXq4Pzh3vDYAdsbQA==",
+           {0xff0e0e16, 0xfffa1c13, 0xff3f2e61, 0xff1a3c6f}},
+          {"ETC2A", "SHgASpzuAAABHy0pABIADAEBDAAAAAAAAAAAAAAAAAAAAABKAAAzABgAAH0AAC8ADQAArAAADQABAAC5AAAMAAEAPAAAxQAAAQEAgjGAAAgwwhOAa+nA2yDcBIYhVFSEMrRTSmikBIKygPQHATOZ1PcWbaBfjPZdJenPJ+AAQmwAAwgAgwA4ZL1habJJUzjoTZcOa/AM7ydOnZxaAe21W4QPBm19tzfn/NoKmAQCYIAAAAAAABkn/mIBAmCAAAAAAAAbQAAChi0AAAAAAQ3DQNME0QQAMRYDgAAQYQieRwFrwAGzAQAAAIYAAacPAADMAAAAAAAAAgAGYAAAAAAAABDWQVSho+F5hE8qfdVtKRlltLgD8cHbbDYAA6sMaAA=",
+           {0xff0e0e16, 0xfffa1c13, 0xff3f2e61, 0xff1a3c6f}},
+          {"DXT1", "SHgASjQMAAAA5TkKABIADAEBAAAAAAAAAAAAAAAAAAAAAABKAAA/AA0AAIkAACcADAAAAAAAAAAAAAAAAAAAAAAAJQAAsAAAANUAgjIAgAwhAxMyS3wKDxQXQECMYCAADCDE4rYjjz6QUJa/n4uwiVH0+6gVFRwgdyY83d5AWAdn4DEgZ5YeXoAAQmwAgAAARABOR+KUAJJJJN3/MgFAtBJJAWB3rAvg5w97zKysrKABZi0AwAAAAgiaMEeTYACYgAIAAAIILtJIAMmAgAAAggwA3PGgOzJpL7zW9RDmALT28Rt+AA==",
+           {0xff101010, 0xfff91e15, 0xff292873, 0xff213c7b}}};
+        for(const UnityCase& uc : cases){
+          const QByteArray d = QByteArray::fromBase64(uc.b64);
+          const QImage u = textures::decodeCrn(reinterpret_cast<const uchar*>(d.constData()), d.size());
+          check(u.size() == QSize(18, 12) && u.pixel(0, 0) == uc.px[0] && u.pixel(17, 11) == uc.px[1] && u.pixel(9, 6) == uc.px[2] && u.pixel(4, 8) == uc.px[3],
+                qPrintable(QString("Crunch: a Unity %1 .crn file, as Unity's crunch unpacks it").arg(uc.name)));
+          for(int cut = 74; cut < d.size(); cut += 9) textures::decodeCrn(reinterpret_cast<const uchar*>(d.constData()), cut);
+          QByteArray m = d; for(int i = 74; i < m.size(); i += 5){ m[i] = char(m[i] ^ 0x5a); textures::decodeCrn(reinterpret_cast<const uchar*>(m.constData()), m.size()); }
+        }
+      }
+      // HDR Basis: UASTC HDR 4x4 and ASTC HDR 6x6 slices are ASTC HDR blocks (endpoint modes 7 and 11, half floats out),
+      // shown clamped in sRGB; pixels as astcenc decodes the same blocks.
+      {
+        struct HdrCase { const char* name; const char* b64; QRgb px[4]; };
+        const HdrCase cases[2] = {
+          {"UASTC HDR 4x4", "c0ITAE0AIZzeAAAA6uUBAAABAAACAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACEAAAATQAAADcAAABLVgIAAADVOA0FAAAAQmFzaXNVTGliVmVyczIuNTAACwgAAABLVFhtYXBSYW5nZQAAgD8AAAAAAAAAAAAMAAwAAwADAJsAAACQAAAAMr9RYmPweKBoZQH2lXtjurA9UWIBFY9iYI0BUoCIIUaQIUJiLbJYCjAMlwpfCl8KXwpCCAI2RVD6DgDWrBXnZ4kJQogDFrrHpgImCncf8FqlD0IoAlbmErNWogzzHpenJwlRYgHkAAdnYwEyj0juppYJQogDFjzfTEoDCTYXcJqlL0JIBlaaElNSmgpTEiUXp5c=",
+           {0xff121586, 0xffffffff, 0xffcaff6b, 0xffff06ff}},
+          {"ASTC HDR 6x6", "c0ITAE0AikyOAAAAOMoBAAABAAADAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACEAAAATQAAADcAAABLVgIAAADVOA0FAAAAQmFzaXNVTGliVmVyczIuNTAACwgAAABLVFhtYXBSYW5nZQAAgD8AAAAAAAAAAAAMAAwAAgACAJsAAABAAAAApUiuZx9w4dhW/z8v8zMj/DIirmfDEvDgGHd5fDc5PNfZ3CJlJdAL2Vb/dzvdVRnMRAgiZRc7KZ4E3+3OV2VGEyEC",
+           {0xff2e147f, 0xffffffff, 0xffb7ff91, 0xffff65ff}}};
+        for(const HdrCase& hc : cases){
+          const QByteArray d = QByteArray::fromBase64(hc.b64);
+          const QVector<QImage> l = textures::decodeBasis(reinterpret_cast<const uchar*>(d.constData()), d.size());
+          const QImage im = l.value(0);
+          check(im.size() == QSize(12, 12) && im.pixel(0, 0) == hc.px[0] && im.pixel(11, 11) == hc.px[1] && im.pixel(2, 9) == hc.px[2] && im.pixel(9, 2) == hc.px[3],
+                qPrintable(QString("Basis: %1, as astcenc decodes its blocks").arg(hc.name)));
+          QByteArray m = d; for(int i = 77; i < m.size(); i += 3){ m[i] = char(m[i] ^ 0x33); textures::decodeBasis(reinterpret_cast<const uchar*>(m.constData()), m.size()); }
+        }
+        // UASTC HDR 6x6 intermediate: raw and delta-coded endpoints, decoded straight from its stream; pixels as basisu
+        // transcodes it to ASTC and astcenc decodes that.
+        {
+          const QByteArray d = QByteArray::fromBase64("c0ITAE0AQhO9AAAAgPUBAAABAAAEAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACEAAAATQAAADcAAABLVgIAAADVOA0FAAAAQmFzaXNVTGliVmVyczIuNTAACwgAAABLVFhtYXBSYW5nZQAAgD8AAAAAAAAAAAAYABIABAADAJsAAABvAAAAyyDNqxgAEgBVIk7qWnZkdD4lNd/F1f/KYCWLw0VceEReeoafu59XnUXxVd+fN92cMFbfnwE4L2Tb7PvzHzxSuOr786yrZsbq+zNW8TOJVm1+BuDCsWWr788gc0GJC/D8+RAu2GD1/RmrNBlJqb4XOgU=");
+          const QImage im = textures::decodeBasis(reinterpret_cast<const uchar*>(d.constData()), d.size()).value(0);
+          check(im.size() == QSize(24, 18) && im.pixel(0, 0) == 0xff263498 && im.pixel(23, 17) == 0xffffffff && im.pixel(5, 12) == 0xffc3ff93 && im.pixel(18, 3) == 0xffff8bff,
+                "Basis: UASTC HDR 6x6 intermediate, as basisu transcodes it");
+          for(int cut = 150; cut < d.size(); cut += 4) textures::decodeBasis(reinterpret_cast<const uchar*>(d.constData()), cut);
+          QByteArray m = d; for(int i = 155; i < m.size(); ++i){ m[i] = char(m[i] ^ (1 << (i % 8))); textures::decodeBasis(reinterpret_cast<const uchar*>(m.constData()), m.size()); }
+          check(gputex::decodeUastcHdr6x6i(reinterpret_cast<const uchar*>(d.constData()) + 155, 111, 99, 18).isNull(), "Basis: a 6x6 intermediate stream whose size doesn't match is refused");
+        }
+        QRgb px[144]; for(int i = 0; i < 600; ++i){ QByteArray r(16, '\0'); for(int k = 0; k < 16; ++k) r[k] = char((i * 151 + k * 29 + i * k * 7) & 255); gputex::decodeBlock(gputex::Format::ASTC, reinterpret_cast<const uchar*>(r.constData()), px, 4 + i % 9, 4 + (i / 9) % 9); }
+      }
       check(textures::decodeBasis(nullptr, 0).isEmpty() && textures::decodeCrn(reinterpret_cast<const uchar*>("Hx"), 2).isNull(), "Basis / Crunch: empty and cut-short files give nothing");
     }
 
@@ -13662,6 +13712,32 @@ if(xara::pdfVectorAvailable()){
       QRgb junk[144]; QByteArray rnd(16,'\0'); for(int i=0;i<16;++i) rnd[i]=char(i*37+11);
       for(int bw : {4,5,6,8,10,12}) for(int bh : {4,5,6,8,10,12}) gputex::decodeBlock(gputex::Format::ASTC,reinterpret_cast<const uchar*>(rnd.constData()),junk,bw,bh);
       check(gputex::decode(gputex::Format::BC7,reinterpret_cast<const uchar*>(bc7.constData()),15,4,4).isNull(), "GPU textures: short data and odd blocks, safely");
+      // BC6H: a one-region block written by hand (mode 11, ten-bit endpoints), and two-region blocks checked against Pillow.
+      {
+        QByteArray blk(16,'\0'); int at=0;
+        auto put=[&](quint32 v,int n){ for(int k=0;k<n;++k,++at) if(v>>k&1) blk[at>>3]=char(blk[at>>3]|1<<(at&7)); };
+        put(0x03,5); put(0,10); put(0,10); put(0,10); put(512,10); put(256,10); put(0,10);
+        for(int i=0;i<16;++i) put(i==15?15:i==5?7:0, i==0?3:4);
+        quint16 h[16][3]; const bool ok=gputex::decodeBc6Halves(reinterpret_cast<const uchar*>(blk.constData()),false,h);
+        check(ok && h[0][0]==0 && h[15][0]==0x3E0F && h[5][0]==0x1D17 && h[15][2]==0, "GPU textures: BC6H endpoints unquantized and interpolated to half floats");
+        QRgb px[16]; gputex::decodeBlock(gputex::Format::BC6H,reinterpret_cast<const uchar*>(blk.constData()),px);
+        const double g15=std::ldexp(double(h[15][1]&1023|1024),(h[15][1]>>10&31)-25);   // about 0.0069 in linear light
+        check(qRed(px[15])==255 && qBlue(px[15])==0 && qAbs(qGreen(px[15])-int(std::lround(255*(1.055*std::pow(g15,1/2.4)-0.055))))<=1 && qGreen(px[15])>int(std::lround(g15*255))+5, "GPU textures: BC6H shown clamped, in sRGB");
+        const char* cases[2][2]={{"418d3b31feb7788ad68c7965a3dc263b","0xffff01,0xffff0e,0xffff01,0xff0000,0xffff01,0x2a0000,0x040000,0xff0000,0x000000,0x000000,0x000000,0xff0000,0xff0000,0x2a0000,0x000000,0xff0000"},
+                                 {"5e6dc46adf1e0b9a9dc20b60b796548d","0xff00ff,0x0101ff,0x0101ff,0x0101ff,0xab0eff,0xab0eff,0xff06ff,0x0002ff,0x0002ff,0xff00ff,0xff00ff,0xff00ff,0x0002ff,0x0001ff,0x0001ff,0xff03ff"}};
+        auto halfF=[](quint16 v){ const int e=v>>10&31, m=v&1023; return e==0 ? std::ldexp(double(m),-24) : e==31 ? 0.0 : std::ldexp(double(m|1024),e-25); };
+        bool same=true;
+        for(auto& c : cases){
+          const QByteArray b=QByteArray::fromHex(c[0]); const QStringList want=QString(c[1]).split(',');
+          gputex::decodeBc6Halves(reinterpret_cast<const uchar*>(b.constData()),false,h);
+          for(int i=0;i<16;++i){ const uint w=want[i].mid(2).toUInt(nullptr,16); for(int k=0;k<3;++k) same = same && qAbs(qBound(0,int(std::lround(halfF(h[i][k])*255)),255) - int(w>>(16-8*k)&255))<=1; }
+        }
+        check(same, "GPU textures: BC6H two-region modes match an independent decoder");
+        gputex::Format bf=gputex::Format::BC1; int bw=0, bh=0;
+        check(textures::dxgiBlockFormat(95,&bf) && bf==gputex::Format::BC6H && textures::dxgiBlockFormat(96,&bf) && bf==gputex::Format::BC6HS
+              && textures::glBlockFormat(0x8E8F,&bf,&bw,&bh) && bf==gputex::Format::BC6H, "GPU textures: BC6H from DDS and KTX");
+        for(int i=0;i<500;++i){ QByteArray r(16,'\0'); for(int k=0;k<16;++k) r[k]=char((i*131+k*71+i*k)&255); gputex::decodeBlock(i&1?gputex::Format::BC6HS:gputex::Format::BC6H,reinterpret_cast<const uchar*>(r.constData()),px); }
+      }
     }
 
     // --- Aseprite ---

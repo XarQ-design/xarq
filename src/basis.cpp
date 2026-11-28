@@ -269,7 +269,8 @@ QVector<QImage> decodeBasis(const uchar* p, qint64 n, QString* note, int* frameU
     const int nSel = int(le(p + 48, 2)); const quint32 sOff = le(p + 50, 4), sLen = le(p + 54, 3);
     const quint32 tOff = le(p + 57, 4), tLen = le(p + 61, 4), descOff = le(p + 65, 4);
     if(headerSize < 77 || slices < 1 || slices > (1 << 20) || quint64(descOff) + quint64(slices) * 23 > quint64(n)) return out;
-    if(format != 0 && format != 1){ if(note) *note = format >= 2 && format <= 4 ? QStringLiteral("HDR Basis Universal data") : QStringLiteral("XUASTC Basis Universal data"); return out; }
+    // UASTC HDR 4x4 and ASTC HDR 6x6 slices are plain ASTC blocks, UASTC HDR 6x6 intermediate its own stream; XUASTC isn't read.
+    if(format > 4){ if(note) *note = QStringLiteral("XUASTC Basis Universal data"); return out; }
     if(flags & 8){ if(note) *note = QStringLiteral("a Basis file that uses another file's codebook"); return out; }
     Codebooks cb;
     if(format == 0){
@@ -282,9 +283,20 @@ QVector<QImage> decodeBasis(const uchar* p, qint64 n, QString* note, int* frameU
         const uchar* d = p + descOff + qint64(i) * 23;
         const int level = d[3], sflags = d[4], w = int(le(d + 5, 2)), h = int(le(d + 7, 2)), bx = int(le(d + 9, 2)), by = int(le(d + 11, 2));
         const quint32 off = le(d + 13, 4), len = le(d + 17, 4);
-        if(quint64(off) + len > quint64(n) || w < 1 || h < 1 || bx < (w + 3) / 4 || by < (h + 3) / 4) return out;
+        const int bs = format == 3 || format == 4 ? 6 : 4;                     // block size
+        if(quint64(off) + len > quint64(n) || w < 1 || h < 1 || bx < (w + bs - 1) / bs || by < (h + bs - 1) / bs) return out;
         const bool isAlpha = format == 0 && alphaSlices && (i & 1);
         if(level != 0){ continue; }                                              // the biggest level of each image
+        if(format == 4){
+            const QImage img = gputex::decodeUastcHdr6x6i(p + off, len, w, h);
+            if(!img.isNull()) out << img;
+            continue;
+        }
+        if(format == 2 || format == 3){
+            QImage img = gputex::decode(gputex::Format::ASTC, p + off, len, bx * bs, by * bs, bs, bs);
+            if(!img.isNull()) out << img.copy(0, 0, w, h);
+            continue;
+        }
         if(format == 1){
             QImage img = gputex::decode(gputex::Format::UASTC, p + off, len, bx * 4, by * 4);
             if(!img.isNull()) out << img.copy(0, 0, w, h);

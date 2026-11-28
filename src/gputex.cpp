@@ -142,6 +142,99 @@ bool bc7(const uchar* s, QRgb* out){
     return true;
 }
 
+// ---- BC6H (half-float RGB) ----------------------------------------------------------------------------------
+// Each mode's header as its fields in stream order: endpoint (0–3) and channel (r, g, b), then the bits each
+// field takes, first to last (a few modes keep their endpoints' top bits reversed).
+struct Bc6Mode { int code, codeBits, epb, delta[3]; bool transformed, twoRegions; const char* layout; };
+const Bc6Mode kBc6Modes[14] = {
+    {0x00, 2, 10, {5, 5, 5}, true, true, "g2 4,b2 4,b3 4,r0 0 9,g0 0 9,b0 0 9,r1 0 4,g3 4,g2 0 3,g1 0 4,b3 0,g3 0 3,b1 0 4,b3 1,b2 0 3,r2 0 4,b3 2,r3 0 4,b3 3"},
+    {0x01, 2, 7, {6, 6, 6}, true, true, "g2 5,g3 4,g3 5,r0 0 6,b3 0,b3 1,b2 4,g0 0 6,b2 5,b3 2,g2 4,b0 0 6,b3 3,b3 5,b3 4,r1 0 5,g2 0 3,g1 0 5,g3 0 3,b1 0 5,b2 0 3,r2 0 5,r3 0 5"},
+    {0x02, 5, 11, {5, 4, 4}, true, true, "r0 0 9,g0 0 9,b0 0 9,r1 0 4,r0 10,g2 0 3,g1 0 3,g0 10,b3 0,g3 0 3,b1 0 3,b0 10,b3 1,b2 0 3,r2 0 4,b3 2,r3 0 4,b3 3"},
+    {0x06, 5, 11, {4, 5, 4}, true, true, "r0 0 9,g0 0 9,b0 0 9,r1 0 3,r0 10,g3 4,g2 0 3,g1 0 4,g0 10,g3 0 3,b1 0 3,b0 10,b3 1,b2 0 3,r2 0 3,b3 0,b3 2,r3 0 3,g2 4,b3 3"},
+    {0x0A, 5, 11, {4, 4, 5}, true, true, "r0 0 9,g0 0 9,b0 0 9,r1 0 3,r0 10,b2 4,g2 0 3,g1 0 3,g0 10,b3 0,g3 0 3,b1 0 4,b0 10,b2 0 3,r2 0 3,b3 1,b3 2,r3 0 3,b3 4,b3 3"},
+    {0x0E, 5, 9, {5, 5, 5}, true, true, "r0 0 8,b2 4,g0 0 8,g2 4,b0 0 8,b3 4,r1 0 4,g3 4,g2 0 3,g1 0 4,b3 0,g3 0 3,b1 0 4,b3 1,b2 0 3,r2 0 4,b3 2,r3 0 4,b3 3"},
+    {0x12, 5, 8, {6, 5, 5}, true, true, "r0 0 7,g3 4,b2 4,g0 0 7,b3 2,g2 4,b0 0 7,b3 3,b3 4,r1 0 5,g2 0 3,g1 0 4,b3 0,g3 0 3,b1 0 4,b3 1,b2 0 3,r2 0 5,r3 0 5"},
+    {0x16, 5, 8, {5, 6, 5}, true, true, "r0 0 7,b3 0,b2 4,g0 0 7,g2 5,g2 4,b0 0 7,g3 5,b3 4,r1 0 4,g3 4,g2 0 3,g1 0 5,g3 0 3,b1 0 4,b3 1,b2 0 3,r2 0 4,b3 2,r3 0 4,b3 3"},
+    {0x1A, 5, 8, {5, 5, 6}, true, true, "r0 0 7,b3 1,b2 4,g0 0 7,b2 5,g2 4,b0 0 7,b3 5,b3 4,r1 0 4,g3 4,g2 0 3,g1 0 4,b3 0,g3 0 3,b1 0 5,b2 0 3,r2 0 4,b3 2,r3 0 4,b3 3"},
+    {0x1E, 5, 6, {6, 6, 6}, false, true, "r0 0 5,g3 4,b3 0,b3 1,b2 4,g0 0 5,g2 5,b2 5,b3 2,g2 4,b0 0 5,g3 5,b3 3,b3 5,b3 4,r1 0 5,g2 0 3,g1 0 5,g3 0 3,b1 0 5,b2 0 3,r2 0 5,r3 0 5"},
+    {0x03, 5, 10, {10, 10, 10}, false, false, "r0 0 9,g0 0 9,b0 0 9,r1 0 9,g1 0 9,b1 0 9"},
+    {0x07, 5, 11, {9, 9, 9}, true, false, "r0 0 9,g0 0 9,b0 0 9,r1 0 8,r0 10,g1 0 8,g0 10,b1 0 8,b0 10"},
+    {0x0B, 5, 12, {8, 8, 8}, true, false, "r0 0 9,g0 0 9,b0 0 9,r1 0 7,r0 11 10,g1 0 7,g0 11 10,b1 0 7,b0 11 10"},
+    {0x0F, 5, 16, {4, 4, 4}, true, false, "r0 0 9,g0 0 9,b0 0 9,r1 0 3,r0 15 10,g1 0 3,g0 15 10,b1 0 3,b0 15 10"},
+};
+struct Bc6Step { quint8 ep, ch, bit; };
+struct Bc6Layout { QVector<Bc6Step> steps; };
+const Bc6Layout& bc6Layout(int m){
+    static const QVector<Bc6Layout> all = []{
+        QVector<Bc6Layout> v(14);
+        for(int i = 0; i < 14; ++i) for(const QString& f : QString::fromLatin1(kBc6Modes[i].layout).split(QLatin1Char(','))){
+            const QStringList t = f.split(QLatin1Char(' '));
+            const int ch = t[0][0] == QLatin1Char('r') ? 0 : t[0][0] == QLatin1Char('g') ? 1 : 2, ep = t[0][1].digitValue();
+            const int from = t[1].toInt(), to = t.size() > 2 ? t[2].toInt() : from, dir = to >= from ? 1 : -1;
+            for(int b = from;; b += dir){ v[i].steps << Bc6Step{quint8(ep), quint8(ch), quint8(b)}; if(b == to) break; }
+        }
+        return v;
+    }();
+    return all[m];
+}
+inline int signExtend(int v, int bits){ return bits >= 32 ? v : (v & (1 << (bits - 1))) ? v - (1 << bits) : v; }
+int bc6Unquantize(int x, int bits, bool sgn){
+    if(!sgn){
+        if(bits >= 15) return x; if(x == 0) return 0; if(x == (1 << bits) - 1) return 0xFFFF;
+        return ((x << 16) + 0x8000) >> bits;
+    }
+    if(bits >= 16) return x;
+    const bool neg = x < 0; if(neg) x = -x;
+    int q; if(x == 0) q = 0; else if(x >= (1 << (bits - 1)) - 1) q = 0x7FFF; else q = ((x << 15) + 0x4000) >> (bits - 1);
+    return neg ? -q : q;
+}
+float halfToFloat(quint16 h){
+    const int e = h >> 10 & 31, m = h & 1023; const float s = h & 0x8000 ? -1.f : 1.f;
+    if(e == 0) return s * std::ldexp(float(m), -24);
+    if(e == 31) return m ? 0.f : s * 65504.f;                                   // infinities clamp, NaNs go dark
+    return s * std::ldexp(float(m | 1024), e - 25);
+}
+// Linear light, clamped, into 8-bit sRGB.
+int linearToSrgb8(float v){
+    if(!(v > 0)) return 0; if(v >= 1) return 255;
+    const float s = v <= 0.0031308f ? v * 12.92f : 1.055f * std::pow(v, 1 / 2.4f) - 0.055f;
+    return qBound(0, int(s * 255 + 0.5f), 255);
+}
+// The block's 16 texels as half floats (RGB), or false for a reserved mode (all zero, as D3D decodes it).
+bool bc6Halves(const uchar* s, bool sgn, quint16 (*out)[3]){
+    Bits b{ s, 0 };
+    int code = b.take(2); if(code > 1) code |= b.take(3) << 2;
+    int m = 0; while(m < 14 && !(kBc6Modes[m].code == code)) ++m;
+    if(m == 14){ for(int i = 0; i < 16; ++i) out[i][0] = out[i][1] = out[i][2] = 0; return false; }
+    const Bc6Mode& md = kBc6Modes[m];
+    int ep[4][3] = {};
+    for(const Bc6Step& st : bc6Layout(m).steps) ep[st.ep][st.ch] |= b.take(1) << st.bit;
+    const int regions = md.twoRegions ? 2 : 1, part = regions == 2 ? b.take(5) : 0;
+    for(int c = 0; c < 3; ++c){
+        if(sgn) ep[0][c] = signExtend(ep[0][c], md.epb);
+        for(int e = 1; e < regions * 2; ++e){
+            if(md.transformed){ ep[e][c] = (ep[0][c] + signExtend(ep[e][c], md.delta[c])) & ((1 << md.epb) - 1); if(sgn) ep[e][c] = signExtend(ep[e][c], md.epb); }
+            else if(sgn) ep[e][c] = signExtend(ep[e][c], md.epb);
+        }
+        for(int e = 0; e < regions * 2; ++e) ep[e][c] = bc6Unquantize(ep[e][c], md.epb, sgn);
+    }
+    const int ib = regions == 2 ? 3 : 4;
+    for(int i = 0; i < 16; ++i){
+        const bool anchor = i == 0 || (regions == 2 && i == kBc7A2[part]);
+        const int idx = b.take(anchor ? ib - 1 : ib), sub = regions == 2 ? int(kBc7P2[part] >> (2 * i) & 3) : 0;
+        for(int c = 0; c < 3; ++c){
+            const int v = interp(ep[sub * 2][c], ep[sub * 2 + 1][c], weights(ib)[idx]);
+            out[i][c] = sgn ? quint16(v < 0 ? 0x8000 | ((-v * 31) >> 5) : (v * 31) >> 5) : quint16((v * 31) >> 6);
+        }
+    }
+    return true;
+}
+bool bc6(const uchar* s, QRgb* out, bool sgn){
+    quint16 h[16][3]; const bool ok = bc6Halves(s, sgn, h);
+    for(int i = 0; i < 16; ++i) out[i] = qRgb(linearToSrgb8(halfToFloat(h[i][0])), linearToSrgb8(halfToFloat(h[i][1])), linearToSrgb8(halfToFloat(h[i][2])));
+    return ok;
+}
+
 // ---- ETC1 / ETC2 / EAC ----------------------------------------------------------------------------------
 const int kEtcMod[8][4] = { {2,8,-2,-8}, {5,17,-5,-17}, {9,29,-9,-29}, {13,42,-13,-42}, {18,60,-18,-60}, {24,80,-24,-80}, {33,106,-33,-106}, {47,183,-47,-183} };
 const int kEtcDist[8] = {3, 6, 11, 16, 23, 32, 41, 64};
@@ -243,6 +336,7 @@ void eac(const uchar* s, int* v, bool elevenBit, bool sgn){
 }
 
 #include "astc.inc"
+#include "astc6x6i.inc"
 #include "uastc.inc"
 
 } // namespace
@@ -267,6 +361,7 @@ bool decodeBlock(Format f, const uchar* s, QRgb* out, int bw, int bh){
     case Format::BC4: case Format::BC4S: bc4(s, a, f == Format::BC4S); for(int i = 0; i < 16; ++i) out[i] = qRgba(a[i], 0, 0, 255); return true;
     case Format::BC5: case Format::BC5S: bc4(s, a, f == Format::BC5S); bc4(s + 8, c, f == Format::BC5S); for(int i = 0; i < 16; ++i) out[i] = qRgba(a[i], c[i], 0, 255); return true;
     case Format::BC7:  return bc7(s, out);
+    case Format::BC6H: case Format::BC6HS: return bc6(s, out, f == Format::BC6HS);
     case Format::ETC1: etc(s, out, false, false); return true;
     case Format::ETC2_RGB: etc(s, out, true, false); return true;
     case Format::ETC2_RGBA1: etc(s, out, true, true); return true;
@@ -278,6 +373,10 @@ bool decodeBlock(Format f, const uchar* s, QRgb* out, int bw, int bh){
     }
     return false;
 }
+
+bool decodeBc6Halves(const uchar* block, bool sgn, quint16 (*out)[3]){ return bc6Halves(block, sgn, out); }
+
+QImage decodeUastcHdr6x6i(const uchar* data, qint64 size, int width, int height){ return data && size > 6 ? decodeHdr6x6i(data, size, width, height) : QImage(); }
 
 QImage decode(Format f, const uchar* data, qint64 size, int w, int h, int bw, int bh){
     if(f != Format::ASTC){ bw = 4; bh = 4; }

@@ -44,11 +44,17 @@ bool blockFormat(quint32 vk, gputex::Format* f, int* bw, int* bh){
     case 139: *f = F::BC4; return true;  case 140: *f = F::BC4S; return true;
     case 141: *f = F::BC5; return true;  case 142: *f = F::BC5S; return true;
     case 145: case 146: *f = F::BC7; return true;
+    case 143: *f = F::BC6H; return true;
+    case 144: *f = F::BC6HS; return true;
     case 147: case 148: *f = F::ETC2_RGB; return true;
     case 149: case 150: *f = F::ETC2_RGBA1; return true;
     case 151: case 152: *f = F::ETC2_RGBA8; return true;
     case 153: *f = F::EAC_R11; return true;  case 154: *f = F::EAC_R11S; return true;
     case 155: *f = F::EAC_RG11; return true; case 156: *f = F::EAC_RG11S; return true;
+    }
+    if(vk >= 1000066000 && vk <= 1000066013){                         // ASTC with half-float (HDR) texels, the same size order
+        static const int dims[14][2] = { {4,4},{5,4},{5,5},{6,5},{6,6},{8,5},{8,6},{8,8},{10,5},{10,6},{10,8},{10,10},{12,10},{12,12} };
+        const int k = int(vk - 1000066000); *f = F::ASTC; *bw = dims[k][0]; *bh = dims[k][1]; return true;
     }
     if(vk >= 157 && vk <= 184){                                       // ASTC, unorm/srgb pairs in a fixed size order
         static const int dims[14][2] = { {4,4},{5,4},{5,5},{6,5},{6,6},{8,5},{8,6},{8,8},{10,5},{10,6},{10,8},{10,10},{12,10},{12,12} };
@@ -144,6 +150,8 @@ QImage decodeKtx2(const uchar* p, qint64 n, QString* note){
         const quint64 gOff = le64(p + 64), gLen = le64(p + 72);
         if(gOff > quint64(n) || gLen > quint64(n) - gOff) return QImage();
         return decodeBasisLz(p + gOff, qint64(gLen), 0, data, size, int(w), int(h));
+    } else if(scheme == 4){                                                    // UASTC HDR 6x6 intermediate: a stream of its own
+        return gputex::decodeUastcHdr6x6i(data, size, int(w), int(h));
     } else if(scheme != 0){
         if(note) *note = QStringLiteral("an unknown supercompression");
         return QImage();
@@ -165,6 +173,8 @@ bool glBlockFormat(quint32 gl, gputex::Format* f, int* bw, int* bh){
     case 0x8C4C: *f = F::BC1; return true; case 0x8C4D: *f = F::BC1A; return true; case 0x8C4E: *f = F::BC2; return true; case 0x8C4F: *f = F::BC3; return true;
     case 0x8DBB: *f = F::BC4; return true; case 0x8DBC: *f = F::BC4S; return true; case 0x8DBD: *f = F::BC5; return true; case 0x8DBE: *f = F::BC5S; return true;
     case 0x8E8C: case 0x8E8D: *f = F::BC7; return true;
+    case 0x8E8F: *f = F::BC6H; return true;                         // GL_COMPRESSED_RGB_BPTC_UNSIGNED_FLOAT
+    case 0x8E8E: *f = F::BC6HS; return true;
     case 0x8D64: *f = F::ETC1; return true;
     case 0x9274: case 0x9275: *f = F::ETC2_RGB; return true;
     case 0x9276: case 0x9277: *f = F::ETC2_RGBA1; return true;
@@ -186,6 +196,8 @@ bool dxgiBlockFormat(quint32 dxgi, gputex::Format* f){
     case 79: case 80: *f = F::BC4; return true; case 81: *f = F::BC4S; return true;
     case 82: case 83: *f = F::BC5; return true; case 84: *f = F::BC5S; return true;
     case 97: case 98: case 99: *f = F::BC7; return true;
+    case 94: case 95: *f = F::BC6H; return true;
+    case 96: *f = F::BC6HS; return true;
     }
     return false;
 }
