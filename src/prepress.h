@@ -120,8 +120,8 @@ QByteArray dwfZlibDictionary();                                  // the preset d
 
 // DrawingML (Office Open XML): PowerPoint slides as pages, with their masters, layouts, themes, preset and custom
 // shapes, fills, lines, text, pictures, tables and SmartArt; and the drawings of Excel sheets, a page a sheet.
-// `zip` is the package's entries. Charts aren't drawn.
-struct DmlImportStats { int pages = 0, shapes = 0, pictures = 0, texts = 0, charts = 0, smartArt = 0, unknownPresets = 0, missingPictures = 0; };
+// `zip` is the package's entries. Charts are drawn from their cached values (the newer chartex kinds aren't).
+struct DmlImportStats { int pages = 0, shapes = 0, pictures = 0, texts = 0, charts = 0, chartsDrawn = 0, smartArt = 0, unknownPresets = 0, missingPictures = 0; };
 Document importPptxDocument(const QMap<QString, QByteArray>& zip, DmlImportStats* stats = nullptr);
 Document importXlsxDrawings(const QMap<QString, QByteArray>& zip, DmlImportStats* stats = nullptr);
 // A Word document laid out down its pages: paragraphs as text frames, tables, and its drawings (shapes, text boxes,

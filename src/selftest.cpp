@@ -13371,6 +13371,56 @@ if(xara::pdfVectorAvailable()){
       QVector<Shape> xs; flat.clear(); flatten(xd.shapes); xs=flat;
       check(xd.pageCount==1 && xs.size()==1 && xs[0].path.boundingRect().toRect()==QRect(64,40,128,40) && xd.shapes.value(0).name=="Data", "DrawingML: an Excel drawing anchored between cells, a page a sheet");
 
+      // Excel charts: a column chart that names its cells (no cached values) in a frame sized by its anchor alone, and a cached pie.
+      {
+        const QString cns="xmlns:c=\"http://schemas.openxmlformats.org/drawingml/2006/chart\" "+ns;
+        QMap<QString,QByteArray> cz;
+        cz.insert("_rels/.rels", rels({{"rId1","officeDocument","xl/workbook.xml"}}));
+        cz.insert("xl/workbook.xml", QByteArray("<workbook xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\" xmlns:r=\"http://schemas.openxmlformats.org/officeDocument/2006/relationships\"><sheets><sheet name=\"My Data\" sheetId=\"1\" r:id=\"rId1\"/></sheets></workbook>"));
+        cz.insert("xl/_rels/workbook.xml.rels", rels({{"rId1","worksheet","worksheets/sheet1.xml"},{"rId2","sharedStrings","sharedStrings.xml"}}));
+        cz.insert("xl/sharedStrings.xml", QByteArray("<sst xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><si><t>North</t></si><si><t>South</t></si><si><t>Apples</t></si><si><r><t>Pe</t></r><r><t>ars</t></r></si></sst>"));
+        cz.insert("xl/worksheets/sheet1.xml", QByteArray("<worksheet xmlns=\"http://schemas.openxmlformats.org/spreadsheetml/2006/main\"><sheetData>"
+          "<row r=\"1\"><c r=\"B1\" t=\"s\"><v>2</v></c><c r=\"C1\" t=\"s\"><v>3</v></c></row>"
+          "<row r=\"2\"><c r=\"A2\" t=\"s\"><v>0</v></c><c r=\"B2\"><v>1000</v></c><c r=\"C2\"><v>500</v></c></row>"
+          "<row r=\"3\"><c r=\"A3\" t=\"s\"><v>1</v></c><c r=\"B3\"><v>2000</v></c><c r=\"C3\"><v>1500</v></c></row></sheetData></worksheet>"));
+        cz.insert("xl/worksheets/_rels/sheet1.xml.rels", rels({{"rId1","drawing","../drawings/drawing1.xml"}}));
+        auto frame=[&](int x,const char* rid){ return QString("<xdr:absoluteAnchor><xdr:pos x=\"%1\" y=\"0\"/><xdr:ext cx=\"4762500\" cy=\"2857500\"/><xdr:graphicFrame><xdr:nvGraphicFramePr><xdr:cNvPr id=\"2\" name=\"Chart %2\"/><xdr:cNvGraphicFramePr/></xdr:nvGraphicFramePr>"
+          "<xdr:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"0\" cy=\"0\"/></xdr:xfrm><a:graphic><a:graphicData uri=\"http://schemas.openxmlformats.org/drawingml/2006/chart\"><c:chart r:id=\"%2\"/></a:graphicData></a:graphic></xdr:graphicFrame><xdr:clientData/></xdr:absoluteAnchor>").arg(x).arg(rid); };
+        cz.insert("xl/drawings/drawing1.xml", QString("<xdr:wsDr xmlns:xdr=\"http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing\" "+cns+">"+frame(0,"rId1")+frame(5715000,"rId2")+"</xdr:wsDr>").toUtf8());
+        cz.insert("xl/drawings/_rels/drawing1.xml.rels", rels({{"rId1","chart","../charts/chart1.xml"},{"rId2","chart","../charts/chart2.xml"}}));
+        auto ser=[](int i,const char* col){ return QString("<c:ser><c:idx val=\"%1\"/><c:order val=\"%1\"/><c:tx><c:strRef><c:f>'My Data'!$%2$1</c:f></c:strRef></c:tx><c:cat><c:strRef><c:f>'My Data'!$A$2:$A$3</c:f></c:strRef></c:cat>"
+          "<c:val><c:numRef><c:f>'My Data'!$%2$2:$%2$3</c:f></c:numRef></c:val></c:ser>").arg(i).arg(col); };
+        cz.insert("xl/charts/chart1.xml", QString("<c:chartSpace "+cns+"><c:chart><c:autoTitleDeleted val=\"1\"/><c:plotArea><c:barChart><c:barDir val=\"col\"/><c:grouping val=\"clustered\"/>"+ser(0,"B")+ser(1,"C")+
+          "<c:axId val=\"1\"/><c:axId val=\"2\"/></c:barChart><c:catAx><c:axId val=\"1\"/><c:crossAx val=\"2\"/></c:catAx><c:valAx><c:axId val=\"2\"/><c:majorGridlines/><c:numFmt formatCode=\"[$$-409]#,##0.00\" sourceLinked=\"0\"/><c:crossAx val=\"1\"/></c:valAx></c:plotArea>"
+          "<c:legend><c:legendPos val=\"b\"/></c:legend></c:chart></c:chartSpace>").toUtf8());
+        cz.insert("xl/charts/chart2.xml", QString("<c:chartSpace "+cns+"><c:chart><c:plotArea><c:pieChart><c:varyColors val=\"1\"/><c:ser><c:idx val=\"0\"/><c:tx><c:v>Share</c:v></c:tx>"
+          "<c:cat><c:strLit><c:ptCount val=\"3\"/><c:pt idx=\"0\"><c:v>A</c:v></c:pt><c:pt idx=\"1\"><c:v>B</c:v></c:pt><c:pt idx=\"2\"><c:v>C</c:v></c:pt></c:strLit></c:cat>"
+          "<c:val><c:numLit><c:ptCount val=\"3\"/><c:pt idx=\"0\"><c:v>50</c:v></c:pt><c:pt idx=\"1\"><c:v>25</c:v></c:pt><c:pt idx=\"2\"><c:v>25</c:v></c:pt></c:numLit></c:val>"
+          "<c:dLbls><c:showPercent val=\"1\"/></c:dLbls></c:ser></c:pieChart></c:plotArea><c:legend><c:legendPos val=\"r\"/></c:legend></c:chart></c:chartSpace>").toUtf8());
+        DmlImportStats cs; const Document cd=importXlsxDrawings(cz,&cs);
+        QVector<Shape> charts; std::function<void(const QVector<Shape>&)> groupsOf=[&](const QVector<Shape>& v){ for(const Shape& x : v) if(x.type==ShapeType::Group){ if(x.name.startsWith("Chart ")) charts<<x; else groupsOf(x.children); } };
+        groupsOf(cd.shapes);
+        check(cs.chartsDrawn==2 && cs.charts==0 && charts.size()==2, "DrawingML charts: both charts drawn, one sized by its anchor alone");
+        QVector<QRectF> north, south; QStringList texts; bool keyAtBottom=false;
+        for(const Shape& x : charts.value(0).children){
+          if(x.type==ShapeType::Path && x.name=="Apples") north<<x.path.boundingRect();
+          if(x.type==ShapeType::Path && x.name=="Pears") south<<x.path.boundingRect();
+          if(x.type==ShapeType::Text) texts<<x.text;
+          if(x.type==ShapeType::Path && x.name=="Pears key") keyAtBottom = x.path.boundingRect().top()>250;
+        }
+        check(north.size()==2 && south.size()==2 && qAbs(north[1].height()-2*north[0].height())<0.5 && qAbs(south[1].height()-3*south[0].height())<0.5 && north[0].right()<=south[0].left()+0.01,
+              "DrawingML charts: clustered columns from the workbook's cells, side by side, to scale");
+        check(texts.contains("North") && texts.contains("South") && texts.contains("Apples") && texts.contains("Pears") && keyAtBottom, "DrawingML charts: categories from shared strings (rich runs too), a legend at the bottom");
+        check(texts.contains("$2,000.00") && texts.contains("$0.00"), "DrawingML charts: value-axis labels in the axis's number format");
+        int slices=0; QSet<QRgb> colours; QStringList pieTexts; double big=0, small=0;
+        for(const Shape& x : charts.value(1).children){
+          if(x.type==ShapeType::Path && QStringList{"A","B","C"}.contains(x.name)){ ++slices; colours<<x.fill.color.rgb(); const QRectF b=x.path.boundingRect(); (x.name=="A" ? big : small) = b.width()*b.height(); }
+          if(x.type==ShapeType::Text) pieTexts<<x.text;
+        }
+        check(slices==3 && colours.size()==3 && big>small*1.5, "DrawingML charts: a pie's slices in varied colours, sized by their values");
+        check(pieTexts.contains("50%") && pieTexts.contains("25%") && pieTexts.contains("Share"), "DrawingML charts: percentage labels and the single series' title");
+      }
+
       // Word: an inline picture in the text's flow and a shape with a text box placed against the page.
       const QString wns="xmlns:w=\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\" xmlns:wp=\"http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing\" xmlns:wps=\"http://schemas.microsoft.com/office/word/2010/wordprocessingShape\" xmlns:pic=\"http://schemas.openxmlformats.org/drawingml/2006/picture\" "+ns;
       QMap<QString,QByteArray> wz;

@@ -6,7 +6,7 @@
 // alpha...); a shape without its own fill or line takes the theme's styles. Slides layer their master's and
 // layout's shapes beneath their own and inherit placeholder positions and text styles from them. Pictures are
 // cropped as the file says, tables become tables, SmartArt comes in through the drawing Office saves with it.
-// Charts aren't drawn.
+// Charts are drawn as shapes from the values they cache, or from the workbook cells they name.
 #include "prepress.h"
 #include <QFontMetricsF>
 #include <QHash>
@@ -710,6 +710,7 @@ struct Walker {
     QVector<Shape> out;
     int budget = 200000;
     double unit = 1;                                   // page px per nominal px for absolute sizes (points, line widths)
+    std::function<QStringList(const QString&)> cells;  // a workbook's cell range, for charts that cache no values
     // A Word text box's paragraphs (w:txbxContent) laid in an area of the shape: supplied by the Word reader.
     std::function<QVector<Shape>(const X& content, const QSizeF& areaPx, const QTransform& areaToPage)> wordText;
     QString objectName;                                // a name for the next top-level object (Word's docPr)
@@ -982,6 +983,598 @@ struct Walker {
         out << s; if(cx.st) ++cx.st->shapes;
     }
 
+    // ---- Charts: drawn from the values the file caches (or the workbook cells they name), as editable shapes ----
+    struct Series {
+        QString name; QStringList cats; QVector<double> vals, xs, sizes; QString format;
+        QColor colour, lineColour; QVector<QColor> points;
+        bool line = true; double lineW = -1; QVector<qreal> dash;
+        QString symbol; double markerSize = 5; QColor markerFill, markerLine;
+        const X* labels = nullptr;
+    };
+    struct ChartText { double size = 10; bool bold = false, italic = false; QColor colour = Qt::black; QString face; };
+    QStringList chartStrings(const X* ref){
+        QStringList out; if(!ref) return out;
+        const X* cache = find(ref, QLatin1String("strCache")); if(!cache) cache = find(ref, QLatin1String("numCache"));
+        if(!cache) cache = find(ref, QLatin1String("strLit")); if(!cache) cache = find(ref, QLatin1String("numLit"));
+        if(!cache){ if(cells) if(const X* f = find(ref, QLatin1String("f"))) return cells(f->t.trimmed()); return out; }
+        const int n = cache->c("ptCount") ? qBound(0, int(cache->c("ptCount")->num("val")), 100000) : 0;
+        for(int i = 0; i < n; ++i) out << QString();
+        for(const X& pt : cache->k) if(pt.n == QLatin1String("pt")) if(const X* v = pt.c("v")){
+            const int i = int(pt.num("idx")); if(i < 0 || i >= 100000) continue;
+            while(out.size() <= i) out << QString();
+            out[i] = v->t;
+        }
+        return out;
+    }
+    QVector<double> chartNumbers(const X* ref){
+        QVector<double> out; for(const QString& v : chartStrings(ref)){ bool ok = false; const double d = v.toDouble(&ok); out << (ok ? d : qQNaN()); } return out;
+    }
+    static QString cacheFormat(const X* ref){ const X* c = ref ? find(ref, QLatin1String("numCache")) : nullptr; const X* f = c ? c->c("formatCode") : nullptr; return f ? f->t : QString(); }
+    QColor accent(int i){
+        static const char* names[6] = {"accent1", "accent2", "accent3", "accent4", "accent5", "accent6"};
+        static const QColor fallback[6] = {QColor(68, 114, 196), QColor(237, 125, 49), QColor(165, 165, 165), QColor(255, 192, 0), QColor(91, 155, 213), QColor(112, 173, 71)};
+        i = qMax(0, i);
+        QColor c = cx.theme ? cx.theme->scheme.value(QLatin1String(names[i % 6]), fallback[i % 6]) : fallback[i % 6];
+        const int round = i / 6;                                                // past six series: darker, then lighter shades
+        if(round % 2 == 1) c = shaded(c, 0.6); else if(round > 0) c = tinted(c, 0.6);
+        return c;
+    }
+    static double niceStep(double range, int ticks = 5){
+        if(!(range > 0) || !std::isfinite(range)) return 1;
+        const double raw = range / ticks, mag = std::pow(10.0, std::floor(std::log10(raw))), f = raw / mag;
+        return (f <= 1 ? 1 : f <= 2 ? 2 : f <= 2.5 ? 2.5 : f <= 5 ? 5 : 10) * mag;
+    }
+    static QString numberLabel(double v, double step){
+        const int decimals = step >= 1 || !(step > 0) ? 0 : qBound(0, int(std::ceil(-std::log10(step) - 1e-9)), 6);
+        if(qAbs(v) < step * 1e-9) v = 0;
+        return QString::number(v, 'f', decimals);
+    }
+    // A number in an Excel format code's terms: literals, currency, digit grouping, decimals and percent.
+    static QString formatNumber(double v, const QString& code, double step){
+        if(code.isEmpty() || code.compare(QLatin1String("General"), Qt::CaseInsensitive) == 0) return numberLabel(v, step);
+        QStringList sections; QString cur; bool quoted = false; int bracket = 0;
+        for(const QChar ch : code){
+            if(ch == QLatin1Char('"')) quoted = !quoted; else if(!quoted && ch == QLatin1Char('[')) ++bracket; else if(!quoted && ch == QLatin1Char(']')) bracket = qMax(0, bracket - 1);
+            if(ch == QLatin1Char(';') && !quoted && !bracket){ sections << cur; cur.clear(); } else cur += ch;
+        }
+        sections << cur;
+        QString c = sections.first();
+        if(v < 0 && sections.size() > 1){ c = sections[1]; v = -v; } else if(v == 0 && sections.size() > 2) c = sections[2];
+        QString pre, suf; int dec = 0; bool group = false, percent = false, digits = false, point = false;
+        for(int i = 0; i < c.size(); ++i){
+            const QChar ch = c[i]; QString& lit = digits ? suf : pre;
+            if(ch == QLatin1Char('"')){ const int e = c.indexOf(QLatin1Char('"'), i + 1); lit += c.mid(i + 1, (e < 0 ? c.size() : e) - i - 1); i = e < 0 ? c.size() : e; }
+            else if(ch == QLatin1Char('\\')){ if(i + 1 < c.size()) lit += c[++i]; }
+            else if(ch == QLatin1Char('[')){ const int e = c.indexOf(QLatin1Char(']'), i + 1); const QString in = c.mid(i + 1, (e < 0 ? c.size() : e) - i - 1);
+                if(in.startsWith(QLatin1Char('$'))) lit += in.mid(1).section(QLatin1Char('-'), 0, 0); i = e < 0 ? c.size() : e; }
+            else if(ch == QLatin1Char('_') || ch == QLatin1Char('*')) ++i;
+            else if(ch == QLatin1Char('#') || ch == QLatin1Char('0') || ch == QLatin1Char('?')){ if(digits && !suf.isEmpty() && !point) continue; digits = true; if(point) ++dec; }
+            else if(ch == QLatin1Char(',') && digits && !point) group = true;
+            else if(ch == QLatin1Char('.') && (digits || (i + 1 < c.size() && (c[i + 1] == QLatin1Char('0') || c[i + 1] == QLatin1Char('#'))))){ digits = true; point = true; }
+            else if(ch == QLatin1Char('%')){ percent = true; lit += ch; }
+            else if(ch == QLatin1Char('E') || ch == QLatin1Char('e')) break;
+            else lit += ch;
+        }
+        if(!digits) return pre + suf;
+        if(percent) v *= 100;
+        QString num = QString::number(v, 'f', qMin(dec, 10));
+        if(group){ int dot = num.indexOf(QLatin1Char('.')); if(dot < 0) dot = num.size(); const int first = num.startsWith(QLatin1Char('-')) ? 1 : 0;
+            for(int k = dot - 3; k > first; k -= 3) num.insert(k, QLatin1Char(',')); }
+        return pre + num + suf;
+    }
+    ChartText chartText(const X* tx, ChartText t){
+        if(!tx) return t;
+        auto apply = [&](const X* r){
+            if(!r) return;
+            if(r->has("sz")) t.size = qBound(1.0, r->num("sz") / 100.0, 400.0);
+            if(r->has("b")) t.bold = r->flag("b"); if(r->has("i")) t.italic = r->flag("i");
+            const Paint f = readFill(r, cx); if(f.kind == 1) t.colour = f.colour;
+            if(const X* l = r->c("latin")) if(!l->at("typeface").isEmpty()) t.face = resolveFace(l->at("typeface"), cx);
+        };
+        apply(find(tx, QLatin1String("defRPr"))); apply(find(tx, QLatin1String("rPr")));
+        return t;
+    }
+    static QString richText(const X* tx){
+        const X* rich = tx ? find(tx, QLatin1String("rich")) : nullptr; if(!rich) return QString();
+        QStringList ps; for(const X& p : rich->k) if(p.n == QLatin1String("p")){ QString line; for(const X& r : p.k) if(const X* t = r.c("t")) line += t->t; ps << line; }
+        return ps.join(QLatin1Char('\n'));
+    }
+    QFont chartFont(const ChartText& t){
+        QFont f(t.face.isEmpty() ? (cx.theme ? cx.theme->minor : QStringLiteral("Calibri")) : t.face);
+        f.setPixelSize(qMax(1, qRound(t.size * 96.0 / 72 * unit))); f.setBold(t.bold); f.setItalic(t.italic);
+        return f;
+    }
+    Shape label(const QString& text, QPointF at, int hAlign, int vAlign, const ChartText& style, double rotate = 0){
+        Shape t; t.type = ShapeType::Text; t.text = text; t.name = text.left(32);
+        t.font = chartFont(style); t.fill.type = FillType::Solid; t.fill.color = style.colour; t.stroke.enabled = false;
+        const QFontMetricsF fm(t.font); const double w = fm.horizontalAdvance(text), h = fm.height();
+        const double dx = hAlign == 1 ? -w / 2 : hAlign == 2 ? -w : 0, dy = vAlign == 1 ? -h / 2 : vAlign == 2 ? -h : 0;
+        t.transform = QTransform::fromTranslate(dx, dy) * QTransform().rotate(rotate) * QTransform::fromTranslate(at.x(), at.y());
+        return t;
+    }
+    Shape chartPath(const QPainterPath& p, const QString& name, const QColor& fill, const QColor& line, double width, const QVector<qreal>& dash = {}){
+        Shape s; s.type = ShapeType::Path; s.name = name; s.path = p;
+        if(fill.isValid() && fill.alpha() > 0){ s.fill.type = FillType::Solid; s.fill.color = fill; } else s.fill.type = FillType::None;
+        if(line.isValid() && line.alpha() > 0 && width > 0){ s.stroke.enabled = true; s.stroke.color = line; s.stroke.width = width; s.stroke.join = Qt::RoundJoin; s.stroke.cap = Qt::FlatCap; s.stroke.dashes = dash; }
+        else s.stroke.enabled = false;
+        return s;
+    }
+    // An outline from a chart element's spPr: the colour and width (page px) it sets, else the fallbacks.
+    void chartLine(const X* spPr, QColor& colour, double& width, QVector<qreal>* dash = nullptr){
+        if(!spPr) return;
+        Line ln; ln.colour = colour; applyLine(spPr->c("ln"), cx, colour, ln);
+        if(!ln.set) return;
+        if(!ln.on && spPr->c("ln") && readFill(spPr->c("ln"), cx).kind == 0){ colour = QColor(); return; }
+        colour = ln.colour; if(spPr->c("ln")->has("w")) width = qMax(0.75, ln.width / kEmuPerPx) * unit;
+        if(dash) *dash = ln.dash;
+    }
+    QPainterPath markerPath(const QString& symbol, QPointF c, double r){
+        QPainterPath p;
+        if(symbol == QLatin1String("square")) p.addRect(QRectF(c.x() - r, c.y() - r, 2 * r, 2 * r));
+        else if(symbol == QLatin1String("diamond")){ p.moveTo(c.x(), c.y() - r); p.lineTo(c.x() + r, c.y()); p.lineTo(c.x(), c.y() + r); p.lineTo(c.x() - r, c.y()); p.closeSubpath(); }
+        else if(symbol == QLatin1String("triangle")){ p.moveTo(c.x(), c.y() - r); p.lineTo(c.x() + r, c.y() + r); p.lineTo(c.x() - r, c.y() + r); p.closeSubpath(); }
+        else if(symbol == QLatin1String("x") || symbol == QLatin1String("star") || symbol == QLatin1String("plus")){
+            if(symbol != QLatin1String("plus")){ p.moveTo(c.x() - r, c.y() - r); p.lineTo(c.x() + r, c.y() + r); p.moveTo(c.x() + r, c.y() - r); p.lineTo(c.x() - r, c.y() + r); }
+            if(symbol != QLatin1String("x")){ p.moveTo(c.x() - r, c.y()); p.lineTo(c.x() + r, c.y()); p.moveTo(c.x(), c.y() - r); p.lineTo(c.x(), c.y() + r); }
+        }
+        else if(symbol == QLatin1String("dash")) p.addRect(QRectF(c.x() - r, c.y() - r * 0.25, 2 * r, r * 0.5));
+        else if(symbol == QLatin1String("dot")) p.addEllipse(c, r * 0.5, r * 0.5);
+        else p.addEllipse(c, r, r);
+        return p;
+    }
+
+    bool drawChart(const X& doc, const QRectF& box, const QString& name){
+        const X* space = doc.c("chartSpace"); if(!space) return false;
+        const X* chart = space->c("chart"); if(!chart) return false;
+        const X* plot = chart->c("plotArea"); if(!plot) return false;
+        if(!(box.width() > 4 && box.height() > 4)) return false;
+        const ChartText base = chartText(space->c("txPr"), ChartText());
+        QVector<Shape> shapes;
+        // The chart's own fill and frame, and the plot's.
+        auto backdrop = [&](const X* spPr, const QRectF& r, const QString& what){
+            if(!spPr) return;
+            const Paint f = readFill(spPr, cx); QColor line = QColor(); double w = 0.75 * unit;
+            if(spPr->c("ln")){ line = Qt::black; chartLine(spPr, line, w); }
+            QPainterPath p; p.addRect(r);
+            const QColor fill = f.kind == 1 ? f.colour : f.kind == 2 && !f.stops.isEmpty() ? f.stops.first().color : QColor();
+            if(fill.isValid() || line.isValid()) shapes << chartPath(p, what, fill, line, w);
+        };
+        backdrop(space->c("spPr"), box, QStringLiteral("Chart area"));
+        // The chart groups and their series.
+        struct Group { QString kind; const X* x; QVector<Series> series; };
+        QVector<Group> groups; int serial = 0;
+        for(const X& g : plot->k){
+            if(!g.n.endsWith(QLatin1String("Chart"))) continue;
+            Group gr; gr.kind = g.n; gr.kind.replace(QLatin1String("3D"), QString()); gr.x = &g;
+            if(gr.kind == QLatin1String("ofPieChart")) gr.kind = QStringLiteral("pieChart");
+            const bool vary = g.c("varyColors") ? g.c("varyColors")->flag("val", true) : false;
+            int nSeries = 0; for(const X& se : g.k) if(se.n == QLatin1String("ser")) ++nSeries;
+            for(const X& se : g.k){
+                if(se.n != QLatin1String("ser") || gr.series.size() >= 256) continue;
+                Series sr;
+                if(const X* tx = se.c("tx")){ if(const X* v = tx->c("v")) sr.name = v->t; else { const QStringList v2 = chartStrings(tx); sr.name = v2.value(0); } }
+                const int idx = se.c("idx") ? int(se.c("idx")->num("val")) : serial;
+                if(sr.name.isEmpty()) sr.name = QStringLiteral("Series %1").arg(idx + 1);
+                ++serial;
+                sr.cats = chartStrings(se.c("cat")); if(sr.cats.isEmpty()) sr.cats = chartStrings(se.c("xVal"));
+                sr.vals = chartNumbers(se.c("val")); if(sr.vals.isEmpty()) sr.vals = chartNumbers(se.c("yVal"));
+                sr.format = cacheFormat(se.c("val")); if(sr.format.isEmpty()) sr.format = cacheFormat(se.c("yVal"));
+                sr.xs = chartNumbers(se.c("xVal"));
+                sr.sizes = chartNumbers(se.c("bubbleSize"));
+                sr.colour = accent(idx); sr.lineColour = sr.colour;
+                const bool lineKind = gr.kind == QLatin1String("lineChart") || gr.kind == QLatin1String("scatterChart") || gr.kind == QLatin1String("radarChart") || gr.kind == QLatin1String("stockChart");
+                if(const X* sp = se.c("spPr")){
+                    const Paint f = readFill(sp, cx);
+                    if(f.kind == 1) sr.colour = f.colour; else if(f.kind == 2 && !f.stops.isEmpty()) sr.colour = f.stops.first().color;
+                    QColor lc = lineKind ? sr.colour : QColor(); double w = -1;
+                    if(sp->c("ln")){ if(!lc.isValid()) lc = Qt::black; chartLine(sp, lc, w, &sr.dash); }
+                    sr.lineColour = lc; sr.lineW = w;
+                    if(lineKind){ if(lc.isValid()) sr.colour = f.kind == 1 ? f.colour : lc; else sr.line = false; }
+                } else if(!lineKind) sr.lineColour = QColor();
+                if(gr.kind == QLatin1String("stockChart")) sr.line = se.c("spPr") && se.c("spPr")->c("ln") && sr.lineColour.isValid();
+                // Markers: what the series asks for, else the chart kind's habit.
+                const bool groupMarkers = gr.kind == QLatin1String("scatterChart") || gr.kind == QLatin1String("stockChart") || (gr.kind == QLatin1String("lineChart") && (!g.c("marker") || g.c("marker")->flag("val", true)))
+                                       || (gr.kind == QLatin1String("radarChart") && g.c("radarStyle") && g.c("radarStyle")->at("val") == QLatin1String("marker"));
+                if(gr.kind == QLatin1String("bubbleChart")) sr.symbol = QStringLiteral("circle");
+                else if(groupMarkers){ static const char* autos[] = {"diamond", "square", "triangle", "x", "star", "circle", "plus", "dash"}; sr.symbol = QLatin1String(autos[qMax(0, idx) % 8]); }
+                if(const X* m = se.c("marker")){
+                    if(const X* sy = m->c("symbol")) sr.symbol = sy->at("val") == QLatin1String("none") ? QString() : sy->at("val") == QLatin1String("auto") ? sr.symbol : sy->at("val");
+                    if(const X* sz = m->c("size")) sr.markerSize = qBound(2.0, sz->num("val", 5), 72.0);
+                    if(const X* sp = m->c("spPr")){ const Paint f = readFill(sp, cx); if(f.kind == 1) sr.markerFill = f.colour; else if(f.kind == 0) sr.markerFill = Qt::transparent;
+                        QColor lc = sr.colour; double w = 0; chartLine(sp, lc, w); sr.markerLine = lc.isValid() ? lc : QColor(Qt::transparent); }
+                }
+                if(gr.kind == QLatin1String("scatterChart") && g.c("scatterStyle")){ const QString st = g.c("scatterStyle")->at("val"); if(st == QLatin1String("marker") && !se.c("spPr")) sr.line = false; }
+                for(const X& d : se.k) if(d.n == QLatin1String("dPt")) if(const X* ix = d.c("idx")) if(const X* sp = d.c("spPr")){
+                    const Paint f = readFill(sp, cx); const int i = int(ix->num("val"));
+                    if((f.kind == 1 || (f.kind == 2 && !f.stops.isEmpty())) && i >= 0 && i < 10000){ while(sr.points.size() <= i) sr.points << QColor(); sr.points[i] = f.kind == 1 ? f.colour : f.stops.first().color; }
+                }
+                if(vary && nSeries == 1 && !lineKind){ for(int i = 0; i < sr.vals.size() && i < 10000; ++i){ while(sr.points.size() <= i) sr.points << QColor(); if(!sr.points[i].isValid()) sr.points[i] = accent(i); } }
+                sr.labels = se.c("dLbls") ? se.c("dLbls") : g.c("dLbls");
+                gr.series << sr;
+            }
+            if(!gr.series.isEmpty()) groups << gr;
+        }
+        if(groups.isEmpty()) return false;
+        const QString kind = groups.first().kind;
+        const bool pie = kind == QLatin1String("pieChart") || kind == QLatin1String("doughnutChart");
+        const QVector<Series>& first = groups.first().series;
+        QRectF area = box.adjusted(7 * unit, 7 * unit, -7 * unit, -7 * unit);
+        // The title: its own text, else the one series' name.
+        const X* titleX = chart->c("title");
+        const bool titleDeleted = chart->c("autoTitleDeleted") && chart->c("autoTitleDeleted")->flag("val");
+        QString title; ChartText titleStyle = base; titleStyle.size = base.size * 1.2; titleStyle.bold = true;
+        if(titleX){ title = richText(titleX->c("tx")); if(title.isEmpty()){ if(const X* f = find(titleX, QLatin1String("strRef"))) title = chartStrings(f).value(0); }
+                    if(title.isEmpty() && groups.size() == 1 && first.size() == 1) title = first.first().name;
+                    if(title.isEmpty()) title = QStringLiteral("Chart Title");                // what Office shows for a title with no text
+                    titleStyle = chartText(titleX->c("txPr"), chartText(titleX->c("tx"), titleStyle)); }
+        else if(!titleDeleted && groups.size() == 1 && first.size() == 1 && pie) title = first.first().name;
+        if(!title.trimmed().isEmpty()){
+            const QStringList lines = title.split(QLatin1Char('\n'));
+            const QFontMetricsF fm(chartFont(titleStyle)); double y = area.top();
+            for(const QString& l : lines){ shapes << label(l, QPointF(area.center().x(), y), 1, 0, titleStyle); y += fm.height(); }
+            area.setTop(y + 6 * unit);
+        }
+        // The legend: the series, or a pie's slices.
+        const X* legend = chart->c("legend");
+        const bool keyLines = kind == QLatin1String("lineChart") || kind == QLatin1String("scatterChart") || kind == QLatin1String("radarChart");
+        if(legend){
+            const QString pos = legend->c("legendPos") ? legend->c("legendPos")->at("val", QStringLiteral("r")) : QStringLiteral("r");
+            QSet<int> hidden; for(const X& e : legend->k) if(e.n == QLatin1String("legendEntry")) if(e.c("delete") && e.c("delete")->flag("val")) hidden.insert(int(e.c("idx") ? e.c("idx")->num("val") : -1));
+            struct Key { QString text; QColor colour; const Series* s; };
+            QVector<Key> keys; int k = 0;
+            if(pie || (first.size() == 1 && first.first().points.size() > 1 && groups.size() == 1 && !keyLines)){
+                const Series& s0 = first.first(); for(int i = 0; i < s0.vals.size(); ++i) if(!hidden.contains(i)) keys << Key{s0.cats.value(i, QString::number(i + 1)), s0.points.value(i).isValid() ? s0.points.value(i) : accent(i), nullptr};
+            } else for(const Group& g : groups) for(const Series& s : g.series){ if(!hidden.contains(k++)) keys << Key{s.name, s.colour, &s}; }
+            const ChartText ls = chartText(legend->c("txPr"), base);
+            const QFontMetricsF fm(chartFont(ls)); const double sw = fm.height() * 0.6, rowH = fm.height() * 1.15, keyW = keyLines ? sw * 2.4 : sw;
+            double wide = 0; for(const Key& k2 : keys) wide = qMax(wide, fm.horizontalAdvance(k2.text));
+            auto key = [&](QPointF at, const Key& k2){
+                const QPointF mid(at.x() + keyW / 2, at.y() + rowH / 2);
+                if(keyLines && k2.s){
+                    if(k2.s->line){ QPainterPath l; l.moveTo(at.x(), mid.y()); l.lineTo(at.x() + keyW, mid.y()); shapes << chartPath(l, k2.text + QStringLiteral(" key"), QColor(), k2.s->lineColour.isValid() ? k2.s->lineColour : k2.colour, qMax(1.0, k2.s->lineW > 0 ? k2.s->lineW : 2 * unit)); }
+                    if(!k2.s->symbol.isEmpty()) shapes << chartPath(markerPath(k2.s->symbol, mid, sw * 0.45), k2.text + QStringLiteral(" key"), k2.s->markerFill.isValid() ? k2.s->markerFill : k2.colour, k2.s->markerLine.isValid() ? k2.s->markerLine : k2.colour, 0.75 * unit);
+                } else { QPainterPath sq; sq.addRect(QRectF(mid.x() - sw / 2, mid.y() - sw / 2, sw, sw)); shapes << chartPath(sq, k2.text + QStringLiteral(" key"), k2.colour, QColor(), 0); }
+                shapes << label(k2.text, QPointF(at.x() + keyW + sw * 0.6, mid.y()), 0, 1, ls);
+            };
+            if(!keys.isEmpty()){
+                if(pos == QLatin1String("r") || pos == QLatin1String("l") || pos == QLatin1String("tr")){
+                    const double w = keyW + sw * 0.6 + wide, h = rowH * keys.size();
+                    const double x = pos == QLatin1String("l") ? area.left() : area.right() - w; double y = pos == QLatin1String("tr") ? area.top() : area.center().y() - h / 2;
+                    for(const Key& k2 : keys){ key(QPointF(x, y), k2); y += rowH; }
+                    if(pos == QLatin1String("l")) area.setLeft(area.left() + w + 8 * unit); else area.setRight(area.right() - w - 8 * unit);
+                } else {
+                    double total = 0; for(const Key& k2 : keys) total += keyW + sw * 0.6 + fm.horizontalAdvance(k2.text) + sw * 1.5;
+                    double x = area.center().x() - total / 2; const double y = pos == QLatin1String("t") ? area.top() : area.bottom() - rowH;
+                    for(const Key& k2 : keys){ key(QPointF(x, y), k2); x += keyW + sw * 0.6 + fm.horizontalAdvance(k2.text) + sw * 1.5; }
+                    if(pos == QLatin1String("t")) area.setTop(area.top() + rowH + 6 * unit); else area.setBottom(area.bottom() - rowH - 6 * unit);
+                }
+            }
+        }
+        // A manual layout of the plot's inner rectangle wins over the automatic one.
+        bool innerLayout = false;
+        if(const X* ml = plot->c("layout", "manualLayout")){
+            const X* x = ml->c("x"); const X* y = ml->c("y"); const X* w = ml->c("w"); const X* h = ml->c("h");
+            if(x && y && w && h && w->num("val") > 0 && h->num("val") > 0){
+                const QRectF r(box.left() + x->num("val") * box.width(), box.top() + y->num("val") * box.height(), w->num("val") * box.width(), h->num("val") * box.height());
+                if(r.width() > 4 && r.height() > 4){ area = r; innerLayout = !ml->c("layoutTarget") || ml->c("layoutTarget")->at("val") == QLatin1String("inner"); }
+            }
+        }
+        // Data labels: values (or percentages, or category names) beside the points.
+        auto dataLabel = [&](const Series& s, int i, double v, double total, QPointF at, int h, int vAlign){
+            const X* dl = s.labels; if(!dl) return;
+            if(const X* del = dl->c("delete")) if(del->flag("val")) return;
+            for(const X& one : dl->k) if(one.n == QLatin1String("dLbl") && one.c("idx") && int(one.c("idx")->num("val")) == i && one.c("delete") && one.c("delete")->flag("val")) return;
+            auto on = [&](const char* n){ const X* e = dl->c(n); return e && e->flag("val", true); };
+            QStringList parts;
+            if(on("showSerName")) parts << s.name;
+            if(on("showCatName")) parts << s.cats.value(i);
+            if(on("showVal")){ const X* nf = dl->c("numFmt"); parts << formatNumber(v, nf ? nf->at("formatCode") : s.format, 0.01); }
+            if(on("showPercent") && total > 0) parts << QString::number(qRound(100 * v / total)) + QLatin1Char('%');
+            if(parts.isEmpty()) return;
+            const QString sep = dl->c("separator") ? dl->c("separator")->t : (parts.size() > 1 ? QStringLiteral("; ") : QString());
+            shapes << label(parts.join(sep), at, h, vAlign, chartText(dl->c("txPr"), base));
+        };
+        if(pie){
+            // Pies and doughnuts: the first series, clockwise from the first slice's angle.
+            const Group& g = groups.first(); const Series& s0 = g.series.first();
+            double total = 0; for(double v : s0.vals) if(std::isfinite(v) && v > 0) total += v;
+            if(total <= 0) return false;
+            const double r = qMin(area.width(), area.height()) / 2 * (innerLayout ? 1.0 : 0.95); const QPointF c = area.center();
+            const double hole = kind == QLatin1String("doughnutChart") ? qBound(0.0, (g.x->c("holeSize") ? g.x->c("holeSize")->num("val", 50) : 50) / 100.0, 0.9) : 0;
+            const double explode = g.x->c("ser", "explosion") ? g.x->c("ser", "explosion")->num("val") / 100.0 : 0;
+            double ang = 90 - (g.x->c("firstSliceAng") ? g.x->c("firstSliceAng")->num("val") : 0);
+            const double rr = r / (1 + explode);
+            for(int i = 0; i < s0.vals.size(); ++i){
+                const double v = s0.vals[i]; if(!std::isfinite(v) || v <= 0) continue;
+                const double sweep = -360 * v / total, midA = qDegreesToRadians(ang + sweep / 2);
+                const QPointF dir(std::cos(midA), -std::sin(midA)), cc = c + dir * (rr * explode);
+                const QRectF outer(cc.x() - rr, cc.y() - rr, 2 * rr, 2 * rr), inner(cc.x() - rr * hole, cc.y() - rr * hole, 2 * rr * hole, 2 * rr * hole);
+                QPainterPath p;
+                if(hole > 0){ p.arcMoveTo(outer, ang); p.arcTo(outer, ang, sweep); p.arcTo(inner, ang + sweep, -sweep); p.closeSubpath(); }
+                else { p.moveTo(cc); p.arcTo(outer, ang, sweep); p.closeSubpath(); }
+                QColor edge = Qt::white; double ew = 0.75 * unit; if(s0.lineColour.isValid()){ edge = s0.lineColour; if(s0.lineW > 0) ew = s0.lineW; }
+                shapes << chartPath(p, s0.cats.value(i, s0.name), s0.points.value(i).isValid() ? s0.points.value(i) : accent(i), edge, ew);
+                dataLabel(s0, i, v, total, cc + dir * (rr * (hole > 0 ? (1 + hole) / 2 : 0.65)), 1, 1);
+                ang += sweep;
+            }
+        } else if(kind == QLatin1String("radarChart")){
+            const QVector<Series>& all = first;
+            int n = 0; double hi = 0, lo = 0; for(const Series& s : all){ n = qMax(n, int(s.vals.size())); for(double v : s.vals) if(std::isfinite(v)){ hi = qMax(hi, v); lo = qMin(lo, v); } }
+            if(n < 3) return false;
+            const X* valAx = plot->c("valAx");
+            if(valAx) if(const X* sc = valAx->c("scaling")){ if(const X* m = sc->c("max")) hi = m->num("val", hi); if(const X* m = sc->c("min")) lo = m->num("val", lo); }
+            const double step = niceStep(hi - lo, 2), bottom = std::floor(lo / step) * step, top = qMax(bottom + step, std::ceil(hi / step - 1e-9) * step);
+            const ChartText axText = chartText(valAx ? valAx->c("txPr") : nullptr, base);
+            const double r = qMin(area.width(), area.height()) / 2 * (innerLayout ? 1.0 : 0.8); const QPointF c = area.center();
+            auto at = [&](int i, double v){ const double a = qDegreesToRadians(-90 + 360.0 * i / n); return c + QPointF(std::cos(a), std::sin(a)) * (r * (v - bottom) / qMax(1e-12, top - bottom)); };
+            QColor grid(134, 134, 134); double gw = 0.75 * unit;
+            if(valAx && valAx->c("majorGridlines")){ chartLine(valAx->c("majorGridlines")->c("spPr"), grid, gw);
+                for(double v = bottom + step; v <= top + step / 2; v += step){ QPainterPath p(at(0, v)); for(int i = 1; i <= n; ++i) p.lineTo(at(i % n, v)); shapes << chartPath(p, QStringLiteral("Gridline"), QColor(), grid, gw); } }
+            const X* catAx = plot->c("catAx"); QColor spoke(134, 134, 134); double sw = 0.75 * unit; if(catAx) chartLine(catAx->c("spPr"), spoke, sw);
+            const ChartText catText = chartText(catAx ? catAx->c("txPr") : nullptr, base);
+            for(int i = 0; i < n; ++i){ QPainterPath p(c); p.lineTo(at(i, top)); shapes << chartPath(p, QStringLiteral("Axis"), QColor(), spoke, sw);
+                const QPointF q = at(i, top + (top - bottom) * 0.1); const double dx = q.x() - c.x();
+                shapes << label(all.first().cats.value(i, QString::number(i + 1)), q, qAbs(dx) < r * 0.05 ? 1 : dx > 0 ? 0 : 2, 1, catText); }
+            if(!(valAx && valAx->c("delete") && valAx->c("delete")->flag("val")))
+                for(double v = bottom; v <= top + step / 2; v += step) shapes << label(numberLabel(v, step), at(0, v) + QPointF(-3 * unit, 0), 2, 1, axText);
+            const bool filled = groups.first().x->c("radarStyle") && groups.first().x->c("radarStyle")->at("val") == QLatin1String("filled");
+            for(const Series& s : all){
+                QPainterPath p; QVector<QPointF> pts;
+                for(int i = 0; i < n; ++i){ const QPointF q = at(i, i < s.vals.size() && std::isfinite(s.vals[i]) ? s.vals[i] : bottom); if(i) p.lineTo(q); else p.moveTo(q); pts << q; }
+                p.closeSubpath();
+                if(filled) shapes << chartPath(p, s.name, s.colour, QColor(), 0);
+                else if(s.line) shapes << chartPath(p, s.name, QColor(), s.lineColour.isValid() ? s.lineColour : s.colour, s.lineW > 0 ? s.lineW : 2 * unit, s.dash);
+                if(!s.symbol.isEmpty()) for(const QPointF& q : pts) shapes << chartPath(markerPath(s.symbol, q, s.markerSize * 0.5 * unit * 96 / 72), s.name + QStringLiteral(" marker"), s.markerFill.isValid() ? s.markerFill : s.colour, s.markerLine.isValid() ? s.markerLine : s.colour, 0.75 * unit);
+                for(int i = 0; i < s.vals.size() && i < n; ++i) if(std::isfinite(s.vals[i])) dataLabel(s, i, s.vals[i], 0, pts[i] + QPointF(0, -4 * unit), 1, 2);
+            }
+        } else {
+            // Charts with axes: bars and columns, lines, areas and scatter plots, on shared axes.
+            bool horizontal = false, scatter = false;
+            for(const Group& g : groups){ if(g.kind == QLatin1String("barChart") && g.x->c("barDir") && g.x->c("barDir")->at("val") == QLatin1String("bar")) horizontal = true;
+                                          if(g.kind == QLatin1String("scatterChart") || g.kind == QLatin1String("bubbleChart")) scatter = true; }
+            // The axes: a scatter plot has two value axes, the others a category axis and a value axis.
+            const X* valAx = nullptr; const X* catAx = nullptr;
+            for(const X& a : plot->k){
+                if(a.n == QLatin1String("valAx")){
+                    const QString p = a.c("axPos") ? a.c("axPos")->at("val") : QString();
+                    if(scatter && (p == QLatin1String("b") || p == QLatin1String("t"))){ if(!catAx) catAx = &a; } else if(!valAx) valAx = &a; else if(scatter && !catAx) catAx = &a;
+                } else if((a.n == QLatin1String("catAx") || a.n == QLatin1String("dateAx")) && !catAx) catAx = &a;
+            }
+            auto deleted = [](const X* ax){ return ax && ax->c("delete") && ax->c("delete")->flag("val"); };
+            auto reversed = [](const X* ax){ const X* o = ax ? ax->c("scaling", "orientation") : nullptr; return o && o->at("val") == QLatin1String("maxMin"); };
+            int n = 0; for(const Group& g : groups) for(const Series& s : g.series) n = qMax(n, int(qMax(s.vals.size(), s.cats.size())));
+            if(!n) return false;
+            QStringList cats; for(const Group& g : groups){ for(const Series& s : g.series) if(!s.cats.isEmpty()){ cats = s.cats; break; } if(!cats.isEmpty()) break; }
+            while(cats.size() < n) cats << QString::number(cats.size() + 1);
+            // The value range: totals when stacked, a share when stacked to 100%.
+            double lo = 1e300, hi = -1e300, xlo = 1e300, xhi = -1e300; bool percentAxis = false, anyBarOrArea = false;
+            for(const Group& g : groups){
+                const QString grouping = g.x->c("grouping") ? g.x->c("grouping")->at("val") : QString();
+                const bool stacked = grouping == QLatin1String("stacked") || grouping == QLatin1String("percentStacked"), percent = grouping == QLatin1String("percentStacked");
+                if(g.kind == QLatin1String("barChart") || g.kind == QLatin1String("areaChart")) anyBarOrArea = true;
+                if(percent) percentAxis = true;
+                QVector<double> up(n, 0), down(n, 0);
+                for(const Series& s : g.series) for(int i = 0; i < s.vals.size() && i < n; ++i){
+                    const double v = s.vals[i]; if(!std::isfinite(v)) continue;
+                    if(stacked){ if(v >= 0) up[i] += v; else down[i] += v; } else { lo = qMin(lo, v); hi = qMax(hi, v); }
+                    if(scatter){ const double x = i < s.xs.size() && std::isfinite(s.xs[i]) ? s.xs[i] : i + 1; xlo = qMin(xlo, x); xhi = qMax(xhi, x); }
+                }
+                if(stacked) for(int i = 0; i < n; ++i){
+                    if(percent){ const double t = up[i] - down[i]; if(t > 0){ hi = qMax(hi, up[i] / t); lo = qMin(lo, down[i] / t); } }
+                    else { hi = qMax(hi, up[i]); lo = qMin(lo, down[i]); }
+                }
+            }
+            if(lo > hi){ lo = 0; hi = 1; }
+            if(anyBarOrArea || lo > 0 && hi > 0 && lo < hi * (5.0 / 6)) lo = qMin(lo, 0.0);
+            if(hi < 0 && (anyBarOrArea || hi > lo * (5.0 / 6))) hi = 0;
+            bool fixedLo = false, fixedHi = false;
+            if(const X* sc = valAx ? valAx->c("scaling") : nullptr){ if(const X* m = sc->c("min")){ lo = m->num("val", lo); fixedLo = true; } if(const X* m = sc->c("max")){ hi = m->num("val", hi); fixedHi = true; } }
+            if(hi <= lo) hi = lo + 1;
+            double step = niceStep(hi - lo);
+            if(valAx) if(const X* mu = valAx->c("majorUnit")) if(mu->num("val") > 0) step = mu->num("val");
+            const double vmin = fixedLo ? lo : std::floor(lo / step + 1e-9) * step, vmax = fixedHi ? hi : std::ceil(hi / step - 1e-9) * step;
+            if(qMax(1.0, (vmax - vmin) / step) > 1000) return false;
+            if(scatter && xlo > xhi){ xlo = 0; xhi = 1; }
+            if(scatter && xlo > 0 && xlo < xhi * (5.0 / 6)) xlo = 0;
+            double xstep = scatter ? niceStep(xhi - xlo) : 1;
+            if(scatter && catAx) if(const X* mu = catAx->c("majorUnit")) if(mu->num("val") > 0) xstep = mu->num("val");
+            double xmin = scatter ? std::floor(xlo / xstep + 1e-9) * xstep : 0, xmax = scatter ? qMax(xmin + xstep, std::ceil(xhi / xstep - 1e-9) * xstep) : 1;
+            if(scatter) if(const X* sc = catAx ? catAx->c("scaling") : nullptr){ if(const X* m = sc->c("min")) xmin = m->num("val", xmin); if(const X* m = sc->c("max")) xmax = m->num("val", xmax); }
+            if(scatter && (!(xmax > xmin) || (xmax - xmin) / xstep > 1000)) return false;
+            // Tick labels, in their axes' formats and text.
+            const ChartText valText = chartText(valAx ? valAx->c("txPr") : nullptr, base), catText = chartText(catAx ? catAx->c("txPr") : nullptr, base);
+            QString valFormat; if(const X* nf = valAx ? valAx->c("numFmt") : nullptr) valFormat = nf->flag("sourceLinked") ? QString() : nf->at("formatCode");
+            if(valFormat.isEmpty() && !percentAxis) for(const Group& g : groups) for(const Series& s : g.series) if(valFormat.isEmpty() && !s.format.isEmpty()) valFormat = s.format;
+            if(percentAxis && valFormat.isEmpty()) valFormat = QStringLiteral("0%");
+            QString catFormat; if(const X* nf = catAx ? catAx->c("numFmt") : nullptr) catFormat = nf->at("formatCode");
+            const QFontMetricsF vfm(chartFont(valText)), cfm(chartFont(catText));
+            QVector<double> ticks; for(int k = 0; k <= 1000; ++k){ const double v = vmin + k * step; if(v > vmax + step * 1e-6) break; ticks << v; }
+            double valW = 0; for(double v : ticks) valW = qMax(valW, vfm.horizontalAdvance(formatNumber(v, valFormat, step)));
+            double catW = 0, catH = cfm.height();
+            if(!scatter){ for(const QString& c : cats){ bool ok = false; const double d = c.toDouble(&ok); catW = qMax(catW, cfm.horizontalAdvance(ok && !catFormat.isEmpty() ? formatNumber(d, catFormat, 1) : c)); } }
+            const bool valShown = !deleted(valAx) && valAx, catShown = !deleted(catAx) && (catAx || !scatter);
+            const bool valLabels = valShown && !(valAx->c("tickLblPos") && valAx->c("tickLblPos")->at("val") == QLatin1String("none"));
+            const bool catLabels = catShown && !(catAx && catAx->c("tickLblPos") && catAx->c("tickLblPos")->at("val") == QLatin1String("none"));
+            // Axis titles.
+            auto axisTitle = [&](const X* ax, double* room, bool vertical){
+                const X* t = ax && !deleted(ax) ? ax->c("title") : nullptr; if(!t) return;
+                const QString text = richText(t->c("tx")); if(text.trimmed().isEmpty()) return;
+                ChartText st = base; st.bold = true; st = chartText(t->c("txPr"), chartText(t->c("tx"), st));
+                const X* rot = find(t, QLatin1String("bodyPr")); const bool turned = vertical && !(rot && rot->has("rot") && rot->num("rot") == 0);
+                shapes << label(text, QPointF(), 1, 1, st, turned ? -90 : 0);
+                *room = QFontMetricsF(chartFont(st)).height() + 4 * unit;
+                if(!turned && vertical) *room = QFontMetricsF(chartFont(st)).horizontalAdvance(text) + 6 * unit;
+            };
+            double valTitleRoom = 0, catTitleRoom = 0;
+            const int valTitleAt = shapes.size(); axisTitle(valAx, &valTitleRoom, !horizontal); const int catTitleAt = shapes.size(); axisTitle(catAx, &catTitleRoom, horizontal);
+            QRectF plotR = area;
+            if(!innerLayout){
+                const double valRoom = valLabels ? (horizontal ? vfm.height() : valW) + 6 * unit : 0;
+                const double catRoom = catLabels ? (horizontal ? catW : (scatter ? vfm.height() : catH)) + 6 * unit : 0;
+                if(horizontal){ plotR.setLeft(plotR.left() + catRoom + catTitleRoom); plotR.setBottom(plotR.bottom() - valRoom - valTitleRoom); }
+                else { plotR.setLeft(plotR.left() + valRoom + valTitleRoom); plotR.setBottom(plotR.bottom() - catRoom - catTitleRoom); }
+                plotR.setTop(plotR.top() + vfm.height() / 2); plotR.setRight(plotR.right() - (horizontal ? vfm.horizontalAdvance(formatNumber(vmax, valFormat, step)) / 2 : 4 * unit));
+            }
+            if(plotR.width() < 8 || plotR.height() < 8) return false;
+            // Place the axis titles now the plot is known.
+            if(valTitleAt < shapes.size() && valTitleRoom > 0){ Shape& t = shapes[valTitleAt]; const QPointF c = horizontal ? QPointF(plotR.center().x(), area.bottom() - valTitleRoom / 2) : QPointF(area.left() + valTitleRoom / 2, plotR.center().y()); t.transform = t.transform * QTransform::fromTranslate(c.x(), c.y()); }
+            if(catTitleAt < shapes.size() && catTitleRoom > 0){ Shape& t = shapes[catTitleAt]; const QPointF c = horizontal ? QPointF(area.left() + catTitleRoom / 2, plotR.center().y()) : QPointF(plotR.center().x(), area.bottom() - catTitleRoom / 2); t.transform = t.transform * QTransform::fromTranslate(c.x(), c.y()); }
+            backdrop(plot->c("spPr"), plotR, QStringLiteral("Plot area"));
+            const bool valRev = reversed(valAx), catRev = reversed(catAx) != horizontal;
+            auto vpos = [&](double v){ double t = (v - vmin) / qMax(1e-12, vmax - vmin); if(valRev) t = 1 - t; return horizontal ? plotR.left() + t * plotR.width() : plotR.bottom() - t * plotR.height(); };
+            auto xpos = [&](double x){ double t = (x - xmin) / qMax(1e-12, xmax - xmin); if(reversed(catAx)) t = 1 - t; return plotR.left() + t * plotR.width(); };
+            const bool between = anyBarOrArea ? !(valAx && valAx->c("crossBetween") && valAx->c("crossBetween")->at("val") == QLatin1String("midCat")) : !(valAx && valAx->c("crossBetween") && valAx->c("crossBetween")->at("val") == QLatin1String("midCat"));
+            const double span = horizontal ? plotR.height() : plotR.width();
+            const double slot = between ? span / n : span / qMax(1, n - 1);
+            auto cpos = [&](int i){ const int k = catRev ? n - 1 - i : i; const double o = between ? slot * (k + 0.5) : slot * k + (n == 1 ? span / 2 : 0); return (horizontal ? plotR.top() : plotR.left()) + o; };
+            // Gridlines.
+            auto gridlines = [&](const X* ax, const char* which, bool alongValues){
+                const X* gl = ax ? ax->c(which) : nullptr; if(!gl) return;
+                QColor colour(134, 134, 134); double w = 0.75 * unit; QVector<qreal> dash; chartLine(gl->c("spPr"), colour, w, &dash);
+                if(!colour.isValid()) return;
+                const bool minor = QLatin1String(which) == QLatin1String("minorGridlines");
+                if(alongValues){
+                    const double st = minor ? step / 5 : step;
+                    for(int k = 0; k <= 5000; ++k){ const double v = vmin + k * st; if(v > vmax + st * 1e-6) break; const double q = vpos(v);
+                        QPainterPath g; if(horizontal){ g.moveTo(q, plotR.top()); g.lineTo(q, plotR.bottom()); } else { g.moveTo(plotR.left(), q); g.lineTo(plotR.right(), q); }
+                        shapes << chartPath(g, QStringLiteral("Gridline"), QColor(), colour, w, dash); }
+                } else if(scatter){
+                    const double st = minor ? xstep / 5 : xstep;
+                    for(int k = 0; k <= 5000; ++k){ const double x = xmin + k * st; if(x > xmax + st * 1e-6) break; const double q = xpos(x);
+                        QPainterPath g; g.moveTo(q, plotR.top()); g.lineTo(q, plotR.bottom()); shapes << chartPath(g, QStringLiteral("Gridline"), QColor(), colour, w, dash); }
+                } else for(int i = 0; i <= n; ++i){
+                    const double q = (horizontal ? plotR.top() : plotR.left()) + (between ? slot * i : slot * qMin(i, n - 1)); if(!between && i == n) break;
+                    QPainterPath g; if(horizontal){ g.moveTo(plotR.left(), q); g.lineTo(plotR.right(), q); } else { g.moveTo(q, plotR.top()); g.lineTo(q, plotR.bottom()); }
+                    shapes << chartPath(g, QStringLiteral("Gridline"), QColor(), colour, w, dash);
+                }
+            };
+            gridlines(valAx, "minorGridlines", true); gridlines(catAx, "minorGridlines", false);
+            gridlines(valAx, "majorGridlines", true); gridlines(catAx, "majorGridlines", false);
+            // The axis lines, ticks and labels.
+            const double tick = 4 * unit;
+            auto axisLine = [&](const X* ax) -> QPair<QColor, double> { QColor c(134, 134, 134); double w = 0.75 * unit; if(ax) chartLine(ax->c("spPr"), c, w); return qMakePair(c, w); };
+            auto tickMark = [](const X* ax){ const X* t = ax ? ax->c("majorTickMark") : nullptr; return t ? t->at("val", QStringLiteral("cross")) : QStringLiteral("out"); };
+            if(valShown){
+                const auto ln = axisLine(valAx); const QString tm = tickMark(valAx);
+                const double edge = horizontal ? plotR.bottom() : plotR.left();
+                if(ln.first.isValid()){ QPainterPath a; if(horizontal){ a.moveTo(plotR.left(), edge); a.lineTo(plotR.right(), edge); } else { a.moveTo(edge, plotR.top()); a.lineTo(edge, plotR.bottom()); } shapes << chartPath(a, QStringLiteral("Value axis"), QColor(), ln.first, ln.second); }
+                for(double v : ticks){
+                    const double q = vpos(v);
+                    if(ln.first.isValid() && tm != QLatin1String("none")){ const double a0 = tm == QLatin1String("in") ? 0 : -tick, a1 = tm == QLatin1String("out") ? 0 : tick; QPainterPath t;
+                        if(horizontal){ t.moveTo(q, edge - a0); t.lineTo(q, edge - a1); } else { t.moveTo(edge + a0, q); t.lineTo(edge + a1, q); } shapes << chartPath(t, QStringLiteral("Tick"), QColor(), ln.first, ln.second); }
+                    if(valLabels){ const QString t = formatNumber(v, valFormat, step);
+                        shapes << (horizontal ? label(t, QPointF(q, edge + 4 * unit), 1, 0, valText) : label(t, QPointF(edge - 5 * unit, q), 2, 1, valText)); }
+                }
+            }
+            if(catShown){
+                const auto ln = axisLine(catAx); const QString tm = tickMark(catAx);
+                const double z = scatter ? plotR.bottom() : vpos(qBound(vmin, 0.0, vmax));
+                const double edge = horizontal ? (scatter ? plotR.left() : z) : z;
+                if(ln.first.isValid()){ QPainterPath a; if(horizontal){ a.moveTo(edge, plotR.top()); a.lineTo(edge, plotR.bottom()); } else { a.moveTo(plotR.left(), edge); a.lineTo(plotR.right(), edge); } shapes << chartPath(a, QStringLiteral("Category axis"), QColor(), ln.first, ln.second); }
+                const double labelEdge = horizontal ? plotR.left() : plotR.bottom();
+                if(scatter){
+                    for(int k = 0; k <= 1000; ++k){ const double x = xmin + k * xstep; if(x > xmax + xstep * 1e-6) break; const double q = xpos(x);
+                        if(ln.first.isValid() && tm != QLatin1String("none")){ QPainterPath t; t.moveTo(q, edge + (tm == QLatin1String("in") ? 0 : tick)); t.lineTo(q, edge - (tm == QLatin1String("out") ? 0 : tick)); shapes << chartPath(t, QStringLiteral("Tick"), QColor(), ln.first, ln.second); }
+                        if(catLabels) shapes << label(formatNumber(x, catFormat, xstep), QPointF(q, labelEdge + 4 * unit), 1, 0, catText); }
+                } else {
+                    if(ln.first.isValid() && tm != QLatin1String("none")) for(int i = 0; i <= n; ++i){
+                        if(!between && i == n) break;
+                        const double q = (horizontal ? plotR.top() : plotR.left()) + (between ? slot * i : slot * i);
+                        QPainterPath t; if(horizontal){ t.moveTo(edge - (tm == QLatin1String("in") ? 0 : tick), q); t.lineTo(edge + (tm == QLatin1String("out") ? 0 : tick), q); }
+                        else { t.moveTo(q, edge + (tm == QLatin1String("in") ? 0 : tick)); t.lineTo(q, edge - (tm == QLatin1String("out") ? 0 : tick)); }
+                        shapes << chartPath(t, QStringLiteral("Tick"), QColor(), ln.first, ln.second);
+                    }
+                    if(catLabels){
+                        const int every = qMax(1, int(std::ceil((horizontal ? cfm.height() : catW + 6 * unit) / qMax(1.0, slot))));
+                        for(int i = 0; i < n; i += every){
+                            bool ok = false; const double d = cats[i].toDouble(&ok); const QString t = ok && !catFormat.isEmpty() && !cats[i].isEmpty() ? formatNumber(d, catFormat, 1) : cats[i];
+                            shapes << (horizontal ? label(t, QPointF(labelEdge - 5 * unit, cpos(i)), 2, 1, catText) : label(t, QPointF(cpos(i), labelEdge + 4 * unit), 1, 0, catText));
+                        }
+                    }
+                }
+            }
+            // The series, group by group, in the order the file lists the groups.
+            for(const Group& g : groups){
+                const QString grouping = g.x->c("grouping") ? g.x->c("grouping")->at("val") : QString();
+                const bool stacked = grouping == QLatin1String("stacked") || grouping == QLatin1String("percentStacked"), percent = grouping == QLatin1String("percentStacked");
+                const int m = g.series.size();
+                QVector<double> pos(n, 0), neg(n, 0);
+                for(const Series& s : g.series) for(int i = 0; i < s.vals.size() && i < n; ++i) if(std::isfinite(s.vals[i])){ if(s.vals[i] >= 0) pos[i] += s.vals[i]; else neg[i] += s.vals[i]; }
+                auto share = [&](double v, int i){ if(!percent) return v; const double t = pos[i] - neg[i]; return t != 0 ? v / t : 0.0; };
+                if(g.kind == QLatin1String("barChart")){
+                    const double gap = qBound(0.0, (g.x->c("gapWidth") ? g.x->c("gapWidth")->num("val", 150) : 150) / 100.0, 5.0);
+                    const double overlap = stacked ? 1.0 : qBound(-1.0, (g.x->c("overlap") ? g.x->c("overlap")->num("val", 0) : 0) / 100.0, 1.0);
+                    const double bandSlot = between ? slot : span / qMax(1, n);
+                    const double bar = bandSlot / (gap + (stacked ? 1 : m - (m - 1) * overlap));
+                    QVector<double> up(n, 0), down(n, 0);
+                    for(int si = 0; si < m; ++si){
+                        const Series& s = g.series[si];
+                                                for(int i = 0; i < s.vals.size() && i < n; ++i){
+                            double v = s.vals[i]; if(!std::isfinite(v)) continue;
+                            v = share(v, i);
+                            const double c0 = cpos(i) - bandSlot / 2 + bar * gap / 2;
+                            const double off = stacked ? 0 : (horizontal ? (m - 1 - si) : si) * bar * (1 - overlap);
+                            double a = 0, b = v; if(stacked){ if(v >= 0){ a = up[i]; up[i] += v; b = up[i]; } else { a = down[i]; down[i] += v; b = down[i]; } }
+                            a = qBound(vmin, a, vmax); b = qBound(vmin, b, vmax);
+                            const double pa = vpos(a), pb = vpos(b);
+                            const QRectF r = horizontal ? QRectF(QPointF(qMin(pa, pb), c0 + off), QPointF(qMax(pa, pb), c0 + off + bar)) : QRectF(QPointF(c0 + off, qMin(pa, pb)), QPointF(c0 + off + bar, qMax(pa, pb)));
+                            QPainterPath p; p.addRect(r);
+                            shapes << chartPath(p, s.name, s.points.value(i).isValid() ? s.points.value(i) : s.colour, s.lineColour, s.lineW > 0 ? s.lineW : 0.75 * unit);
+                            const QPointF end = horizontal ? QPointF(v >= 0 ? r.right() + 3 * unit : r.left() - 3 * unit, r.center().y()) : QPointF(r.center().x(), v >= 0 ? r.top() - 2 * unit : r.bottom() + 2 * unit);
+                            if(stacked) dataLabel(s, i, s.vals[i], 0, r.center(), 1, 1);
+                            else dataLabel(s, i, s.vals[i], 0, end, horizontal ? (v >= 0 ? 0 : 2) : 1, horizontal ? 1 : (v >= 0 ? 2 : 0));
+                        }
+                    }
+                } else if(g.kind == QLatin1String("areaChart")){
+                    QVector<double> under(n, 0);
+                    for(const Series& s : g.series){
+                        QPolygonF top, bottom;
+                        for(int i = 0; i < n; ++i){
+                            const double v = share(i < s.vals.size() && std::isfinite(s.vals[i]) ? s.vals[i] : 0, i);
+                            const double b0 = stacked ? under[i] : qBound(vmin, 0.0, vmax), b1 = (stacked ? b0 : 0) + v; if(stacked) under[i] = b1;
+                            top << QPointF(cpos(i), vpos(qBound(vmin, b1, vmax))); bottom.prepend(QPointF(cpos(i), vpos(qBound(vmin, b0, vmax))));
+                        }
+                        if(between && n > 0){ top.prepend(QPointF(cpos(0) - slot / 2 * (catRev ? -1 : 1), top.first().y())); top << QPointF(cpos(n - 1) + slot / 2 * (catRev ? -1 : 1), top.last().y());
+                                              bottom.prepend(QPointF(cpos(n - 1) + slot / 2 * (catRev ? -1 : 1), bottom.first().y())); bottom << QPointF(cpos(0) - slot / 2 * (catRev ? -1 : 1), bottom.last().y()); }
+                        QPainterPath p; p.addPolygon(top + bottom); p.closeSubpath();
+                        shapes << chartPath(p, s.name, s.colour, s.lineColour, s.lineW > 0 ? s.lineW : 0.75 * unit);
+                    }
+                } else {
+                    // Lines, scatter plots and bubbles: a line through the points, and markers.
+                    QVector<double> under(n, 0);
+                    double bubbleMax = 0; if(g.kind == QLatin1String("bubbleChart")) for(const Series& s : g.series) for(double b : s.sizes) if(std::isfinite(b)) bubbleMax = qMax(bubbleMax, qAbs(b));
+                    for(const Series& s : g.series){
+                        QPainterPath p; bool open = false; QVector<QPair<int, QPointF>> pts;
+                        for(int i = 0; i < s.vals.size() && i < (scatter ? 100000 : n); ++i){
+                            double v = s.vals[i]; if(!std::isfinite(v)){ open = false; continue; }
+                            if(stacked && !scatter && i < n){ v = share(v, i); under[i] += v; v = under[i]; }
+                            const double xv = scatter ? (i < s.xs.size() && std::isfinite(s.xs[i]) ? s.xs[i] : i + 1) : 0;
+                            const QPointF q(scatter ? xpos(xv) : cpos(i), vpos(qBound(vmin, v, vmax)));
+                            if(horizontal && !scatter) continue;
+                            if(open) p.lineTo(q); else p.moveTo(q); open = true; pts << qMakePair(i, q);
+                        }
+                        if(s.line && g.kind != QLatin1String("bubbleChart") && !pts.isEmpty())
+                            shapes << chartPath(p, s.name, QColor(), s.lineColour.isValid() ? s.lineColour : s.colour, s.lineW > 0 ? s.lineW : 2.25 * 96 / 72 * unit, s.dash);
+                        if(!s.symbol.isEmpty()) for(const auto& q : pts){
+                            double r = s.markerSize * 0.5 * 96 / 72 * unit;
+                            if(g.kind == QLatin1String("bubbleChart")){ const double b = q.first < s.sizes.size() && std::isfinite(s.sizes[q.first]) ? qAbs(s.sizes[q.first]) : 0;
+                                r = bubbleMax > 0 ? std::sqrt(b / bubbleMax) * qMin(plotR.width(), plotR.height()) * 0.125 : r; }
+                            const QColor fill = s.markerFill.isValid() ? s.markerFill : s.points.value(q.first).isValid() ? s.points.value(q.first) : s.colour;
+                            shapes << chartPath(markerPath(s.symbol, q.second, r), s.name + QStringLiteral(" marker"), g.kind == QLatin1String("bubbleChart") ? fill : (s.symbol == QLatin1String("x") || s.symbol == QLatin1String("plus") || s.symbol == QLatin1String("star") ? QColor() : fill),
+                                                s.markerLine.isValid() ? s.markerLine : (s.symbol == QLatin1String("x") || s.symbol == QLatin1String("plus") || s.symbol == QLatin1String("star") ? s.colour : fill), 0.75 * unit);
+                        }
+                        for(const auto& q : pts) dataLabel(s, q.first, s.vals[q.first], 0, q.second + QPointF(0, -4 * unit), 1, 2);
+                    }
+                }
+            }
+        }
+        if(shapes.isEmpty()) return false;
+        Shape g; g.type = ShapeType::Group; g.name = name.isEmpty() ? QStringLiteral("Chart") : name; g.children = shapes;
+        out << g;
+        if(cx.st) ++cx.st->chartsDrawn;
+        return true;
+    }
+
     // A graphic frame: a table, a chart (left out), SmartArt (from the drawing Office keeps with it), or an
     // embedded object's picture.
     void drawFrame(const X& gf, const QTransform& parent){
@@ -993,7 +1586,13 @@ struct Walker {
         const X* data = gf.c("graphic", "graphicData"); if(!data) return;
         const QString uri = data->at("uri");
         if(const X* tbl = data->c("tbl")){ drawTable(*tbl, local * parent, name); return; }
-        if(uri.endsWith(QLatin1String("/chart")) || uri.contains(QLatin1String("chartex"))){ if(cx.st) ++cx.st->charts; return; }
+        if(uri.endsWith(QLatin1String("/chart"))){                             // a chart, from its part's cached values
+            const X* ref = data->c("chart"); const QString part = ref ? cx.rels.value(ref->at("r:id")).target : QString();
+            const QRectF page = (local * parent).mapRect(box);
+            if(part.isEmpty() || !drawChart(cx.pkg->xml(part), page, name)){ if(cx.st) ++cx.st->charts; }
+            return;
+        }
+        if(uri.contains(QLatin1String("chartex"))){ if(cx.st) ++cx.st->charts; return; }
         if(uri.endsWith(QLatin1String("/diagram"))){
             const X* ids = data->c("relIds");
             const QString dm = ids ? cx.rels.value(ids->at("r:dm")).target : QString();
@@ -1219,12 +1818,53 @@ Document importXlsxDrawings(const QMap<QString, QByteArray>& zip, DmlImportStats
     Theme theme; readTheme(pkg.xml(pkg.relOfType(wb, "/theme")), theme);
     LevelStyles sheetText; for(Lvl& l : sheetText.lvl) l.size = 11;             // Excel's shapes default to 11 points
     const auto wbRels = pkg.rels(wb);
+    // Cell values, for charts that point at cells instead of caching them.
+    QStringList shared;
+    if(const X* sst = pkg.xml(pkg.relOfType(wb, "/sharedStrings")).c("sst")) for(const X& si : sst->k) if(si.n == QLatin1String("si")){
+        QString t; if(const X* tt = si.c("t")) t = tt->t; else for(const X& r : si.k) if(r.n == QLatin1String("r")) if(const X* rt = r.c("t")) t += rt->t;
+        shared << t; if(shared.size() >= 1000000) break; }
+    QHash<QString, QString> sheetParts;
+    if(const X* l = book->c("sheets")) for(const X& s : l->k) sheetParts.insert(s.at("name").toLower(), wbRels.value(s.at("r:id")).target);
+    QHash<QString, QHash<quint64, QString>> sheetCells;
+    auto cellRef = [](QStringView r, int& col, int& row){
+        col = 0; row = 0; int i = 0;
+        while(i < r.size() && (r[i] == QLatin1Char('$') || r[i].isLetter())){ if(r[i].isLetter()) col = qMin(col * 26 + (r[i].toUpper().unicode() - 'A' + 1), 1 << 20); ++i; }
+        while(i < r.size() && (r[i] == QLatin1Char('$') || r[i].isDigit())){ if(r[i].isDigit()) row = qMin(row * 10 + (r[i].unicode() - '0'), 1 << 24); ++i; }
+        return col > 0 && row > 0 && i == r.size();
+    };
+    std::function<QStringList(const QString&)> cells = [&](const QString& formula) -> QStringList {
+        QString f = formula; if(f.startsWith(QLatin1Char('(')) && f.endsWith(QLatin1Char(')'))) f = f.mid(1, f.size() - 2);
+        const int bang = f.lastIndexOf(QLatin1Char('!')); if(bang < 0 || f.contains(QLatin1Char(','))) return {};
+        QString sheet = f.left(bang); if(sheet.startsWith(QLatin1Char('\'')) && sheet.endsWith(QLatin1Char('\''))) sheet = sheet.mid(1, sheet.size() - 2).replace(QLatin1String("''"), QLatin1String("'"));
+        const QStringList ends = f.mid(bang + 1).split(QLatin1Char(':'));
+        int c0, r0, c1, r1; if(!cellRef(ends.first(), c0, r0)) return {};
+        if(ends.size() == 2){ if(!cellRef(ends.last(), c1, r1)) return {}; } else if(ends.size() == 1){ c1 = c0; r1 = r0; } else return {};
+        if(c1 < c0) std::swap(c0, c1); if(r1 < r0) std::swap(r0, r1);
+        if(qint64(c1 - c0 + 1) * (r1 - r0 + 1) > 100000) return {};
+        const QString key = sheet.toLower(); const QString part = sheetParts.value(key); if(part.isEmpty()) return {};
+        auto it = sheetCells.find(key);
+        if(it == sheetCells.end()){
+            QHash<quint64, QString> m;
+            if(const X* sd = pkg.xml(part).c("worksheet", "sheetData")) for(const X& r : sd->k) if(r.n == QLatin1String("row")) for(const X& c : r.k){
+                if(c.n != QLatin1String("c")) continue; int cc, rr; if(!cellRef(c.at("r"), cc, rr)) continue;
+                QString v; const QString t = c.at("t");
+                if(t == QLatin1String("inlineStr")){ if(const X* is = c.c("is")) if(const X* tt = find(is, QLatin1String("t"))) v = tt->t; }
+                else if(const X* vv = c.c("v")){ v = vv->t; if(t == QLatin1String("s")) v = shared.value(v.toInt()); }
+                m.insert(quint64(rr) << 32 | quint64(cc), v);
+                if(m.size() >= 2000000) break;
+            }
+            it = sheetCells.insert(key, m);
+        }
+        QStringList out;
+        for(int r = r0; r <= r1; ++r) for(int c = c0; c <= c1; ++c) out << it->value(quint64(r) << 32 | quint64(c));
+        return out;
+    };
     struct Sheet { QString name; QVector<Shape> shapes; QRectF bounds; };
     QVector<Sheet> sheets;
     if(const X* l = book->c("sheets")) for(const X& s : l->k){
         if(sheets.size() >= 256) break;
         const QString part = wbRels.value(s.at("r:id")).target; if(part.isEmpty()) continue;
-        const X* ws = pkg.xml(part).c("worksheet"); if(!ws) continue;
+        const X* ws = pkg.xml(part).c("worksheet"); if(!ws) ws = pkg.xml(part).c("chartsheet"); if(!ws) continue;   // a chart sheet holds one drawing too
         const QString drawing = pkg.relOfType(part, "/drawing"); if(drawing.isEmpty()) continue;
         // Column widths and row heights, in pixels, to find the anchor cells.
         double defCol = 64, defRow = 20;
@@ -1241,7 +1881,7 @@ Document importXlsxDrawings(const QMap<QString, QByteArray>& zip, DmlImportStats
         auto rowY = [&](int r){ double y = 0; for(int i = 0; i < qMin(r, 1048576); ++i) y += rows.value(i, defRow); return y; };
         auto cellPt = [&](const X* m){ return m ? QPointF(colX(int(m->c("col") ? m->c("col")->t.toDouble() : 0)) + (m->c("colOff") ? m->c("colOff")->t.toDouble() : 0) / kEmuPerPx,
                                                         rowY(int(m->c("row") ? m->c("row")->t.toDouble() : 0)) + (m->c("rowOff") ? m->c("rowOff")->t.toDouble() : 0) / kEmuPerPx) : QPointF(); };
-        Walker w; w.cx.pkg = &pkg; w.cx.theme = &theme; w.cx.st = st; w.cx.part = drawing; w.cx.rels = pkg.rels(drawing);
+        Walker w; w.cx.pkg = &pkg; w.cx.theme = &theme; w.cx.st = st; w.cx.part = drawing; w.cx.rels = pkg.rels(drawing); w.cells = cells;
         const X* wsDr = pkg.xml(drawing).c("wsDr"); if(!wsDr) continue;
         for(const X& anchor : wsDr->k){
             QRectF at;
@@ -1252,6 +1892,18 @@ Document importXlsxDrawings(const QMap<QString, QByteArray>& zip, DmlImportStats
             // The anchor places the object: map its own frame onto the anchor's cells.
             X one; for(const X& k : anchor.k) if(k.n != QLatin1String("from") && k.n != QLatin1String("to") && k.n != QLatin1String("ext") && k.n != QLatin1String("pos") && k.n != QLatin1String("clientData")) one.k << k;
             if(one.k.isEmpty()) continue;
+            if(one.k.first().n == QLatin1String("graphicFrame") && at.width() > 0 && at.height() > 0){
+                // Excel writes its charts' frames with an empty xfrm: the anchor alone sizes them.
+                X& gf = one.k.first(); X* fx = nullptr; for(X& k : gf.k) if(k.n == QLatin1String("xfrm")) fx = &k;
+                const X* e = fx ? fx->c("ext") : nullptr;
+                if(!fx || !e || e->num("cx") <= 0 || e->num("cy") <= 0){
+                    X nx; nx.n = QStringLiteral("xfrm");
+                    X off; off.n = QStringLiteral("off"); off.a = {{QStringLiteral("x"), QString::number(at.x() * kEmuPerPx, 'f', 0)}, {QStringLiteral("y"), QString::number(at.y() * kEmuPerPx, 'f', 0)}};
+                    X ext; ext.n = QStringLiteral("ext"); ext.a = {{QStringLiteral("cx"), QString::number(at.width() * kEmuPerPx, 'f', 0)}, {QStringLiteral("cy"), QString::number(at.height() * kEmuPerPx, 'f', 0)}};
+                    nx.k = {off, ext};
+                    if(fx) *fx = nx; else gf.k.prepend(nx);
+                }
+            }
             const X& obj = one.k.first();
             const X* xf = nullptr;
             if(const X* sp = obj.c("spPr")) xf = sp->c("xfrm"); else if(const X* gp = obj.c("grpSpPr")) xf = gp->c("xfrm"); else xf = obj.c("xfrm");
